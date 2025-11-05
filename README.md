@@ -4,10 +4,10 @@
 
 ## Features
 
-- **Find Macro**: Automatically creates and updates a FIND macro to target specific enemies
-- **Mark Macro**: Creates a companion MARK macro that targets and marks enemies with a skull
+- **Find Macro**: Automatically creates and updates a FIND macro to target specific enemies (perfect for PvP and battlegrounds)
+- **Mark Macro**: Creates a companion MARK macro that targets and marks enemies with a skull to help your team identify priority targets
 - **Multiple Targets**: Support for up to 3 targets in rotation with "Also Find" functionality
-- **Assist Macro**: Creates an ASSIST macro to assist a specific player
+- **Assist Macro**: Creates an ASSIST macro to assist a specific player for coordinated focus targets
 
 ## Commands
 
@@ -46,24 +46,4 @@ The addon creates the following macros automatically:
 - **MARK**: Targets and marks your enemies with a skull icon (if not already marked)
 - **ASSIST**: Assists your specified player
 
-## Installation
-
-1. Download the addon
-2. Extract to `World of Warcraft/_classic_/Interface/AddOns/`
-3. Restart World of Warcraft or reload UI with `/reload`
-4. Drag the created macros to your action bars for quick access
-
-## Requirements
-
-- World of Warcraft Classic (Version 1.15.4+)
-
-## Usage Tips
-
-- Perfect for PvP to quickly target priority enemies
-- Use in battlegrounds to coordinate focus targets
-- The MARK macro helps your team identify priority targets
-- Combine with keybinds for instant targeting
-
-## Author
-
-MIYANKO
+Drag the created macros to your action bars for quick access and combine with keybinds for instant targeting.
