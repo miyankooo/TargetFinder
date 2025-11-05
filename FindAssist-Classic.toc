@@ -1,0 +1,7 @@
+## Interface: 11504
+## Title: FindAssist Classic
+## Notes: Quick target finding and assist macro management for World of Warcraft Classic
+## Author: MIYANKO
+## Version: 1.0.0
+
+TargetMacros.lua
