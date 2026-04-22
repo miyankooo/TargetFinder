@@ -7,9 +7,3 @@ Target finding and assist macros for World of Warcraft Classic.
 - **Quick Targeting**: Find and target specific players instantly.
 - **Assist Macros**: Streamlined assist functionality for group play.
 - **PvP Optimized**: Tailored for battlegrounds and arena environments.
-
-## Installation
-
-1. Download the latest version.
-2. Extract the files to your `Interface/AddOns` folder.
-3. Restart World of Warcraft.
