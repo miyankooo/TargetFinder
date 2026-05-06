@@ -3,5 +3,6 @@
 ## Notes: Target finding and assist macros for World of Warcraft Classic.
 ## Author: MIYANKO
 ## Version: 1.0.0
+## SavedVariables: FindAssistDB
 
 TargetMacros.lua
