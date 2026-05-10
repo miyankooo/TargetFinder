@@ -1,6 +1,6 @@
-## Interface: 11504
+## Interface: 11570
 ## Title: FindAssist Classic
-## Notes: Target finding and assist macros for World of Warcraft Classic.
+## Notes: Target finding and assist macros with raid markers.
 ## Author: MIYANKO
 ## Version: 1.0.0
 ## SavedVariables: FindAssistDB
