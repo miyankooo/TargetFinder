@@ -1,6 +1,6 @@
 local addonName = ...
 
-local ADDON_NAME = "FindAssist"
+local ADDON_NAME = "TargetShortcuts"
 local YELLOW = "|cffffff00"
 local RESET = "|r"
 
@@ -68,8 +68,8 @@ local function writeFindMacro(targets)
 end
 
 local function hintMacro()
-    if FindAssistDB and not FindAssistDB.macroHinted then
-        FindAssistDB.macroHinted = true
+    if TargetShortcutsDB and not TargetShortcutsDB.macroHinted then
+        TargetShortcutsDB.macroHinted = true
         announce("open /macro and drag FIND and ASSIST to your action bar.")
     end
 end
@@ -152,8 +152,8 @@ local function setAssist(name)
     hintMacro()
 end
 
-SLASH_FINDASSIST_FIND1 = "/find"
-SlashCmdList.FINDASSIST_FIND = function(msg)
+SLASH_TARGETSHORTCUTS_FIND1 = "/find"
+SlashCmdList.TARGETSHORTCUTS_FIND = function(msg)
     local arg = trim(msg)
     if arg then
         local first, rest = arg:match("^(%S+)%s*(.-)$")
@@ -175,13 +175,13 @@ SlashCmdList.FINDASSIST_FIND = function(msg)
     setFind(resolveName(msg))
 end
 
-SLASH_FINDASSIST_ADDFIND1 = "/addfind"
-SlashCmdList.FINDASSIST_ADDFIND = function(msg)
+SLASH_TARGETSHORTCUTS_ADDFIND1 = "/addfind"
+SlashCmdList.TARGETSHORTCUTS_ADDFIND = function(msg)
     addFind(resolveName(msg))
 end
 
-SLASH_FINDASSIST_ASSIST1 = "/assist"
-SlashCmdList.FINDASSIST_ASSIST = function(msg)
+SLASH_TARGETSHORTCUTS_ASSIST1 = "/assist"
+SlashCmdList.TARGETSHORTCUTS_ASSIST = function(msg)
     setAssist(resolveName(msg))
 end
 
@@ -225,9 +225,9 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, _, name)
     if name == addonName then
-        FindAssistDB = FindAssistDB or {}
-        if not FindAssistDB.greeted then
-            FindAssistDB.greeted = true
+        TargetShortcutsDB = TargetShortcutsDB or {}
+        if not TargetShortcutsDB.greeted then
+            TargetShortcutsDB.greeted = true
             announce("loaded.")
             print("  /find NAME — set Find target (uses current target if omitted)")
             print("  /find add NAME — add to Find (max 3: circle, square, triangle)")

@@ -1,6 +1,6 @@
-# FindAssist-Classic
+# TargetShortcuts
 
-Build and update target-finding and assist macros from chat or the unit-frame right-click menu.
+Target finding and assist macros with raid markers for WoW Classic 1.15.x.
 
 ## How it works
 
@@ -9,7 +9,7 @@ The addon maintains two macros for you: **FIND** and **ASSIST**. Type `/find <na
 ## Commands
 
 - `/find NAME` — set Find target (uses current target if NAME omitted)
-- `/find add NAME` — append to Find (max 2 targets)
+- `/find add NAME` — add to Find (max 3: circle, square, triangle)
 - `/find clear` — clear Find
 - `/find list` — show current Find targets
 - `/find help` — show help
@@ -19,7 +19,7 @@ You can also right-click any unit frame for **Find**, **Add to Find**, **Clear F
 
 ## Markers
 
-Slot 1 gets the orange circle, slot 2 gets the blue square. Markers are only applied when the target has no mark, so any manual marks you place are preserved.
+Slot 1 gets the orange circle, slot 2 gets the blue square, slot 3 gets the green triangle. Markers are only applied when the target has no mark, so any manual marks you place are preserved.
 
 ## Note
 
