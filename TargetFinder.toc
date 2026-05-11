@@ -1,0 +1,9 @@
+## Interface: 11570
+## Title: TargetFinder
+## Notes: Find and auto-mark named targets with raid markers for WoW Classic 1.15.x.
+## Author: MIYANKO
+## Version: 2.0.0
+## IconTexture: 132177
+## SavedVariables: TargetFinderDB
+
+TargetFinder.lua

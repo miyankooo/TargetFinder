@@ -1,26 +1,30 @@
-# TargetShortcuts
+# TargetFinder
 
-Target finding and assist macros with raid markers for WoW Classic 1.15.x.
+Find and auto-mark named targets with raid markers for WoW Classic 1.15.x.
 
 ## How it works
 
-The addon maintains two macros for you: **FIND** and **ASSIST**. Type `/find <name>` to point FIND at a player; press the FIND macro on your action bar to target them and auto-mark them. After you've used the slash commands once, open your macro book (`/m`) and drag the FIND and ASSIST macros onto your action bar.
+TargetFinder maintains a **FIND** macro that targets each name on your finder list in order, and applies a raid marker to any unit on the list as soon as you target them. After your first `/find` command, open the macro book (`/m`) and drag **FIND** onto your action bar.
 
 ## Commands
 
-- `/find NAME` — set Find target (uses current target if NAME omitted)
-- `/find add NAME` — add to Find (max 3: circle, square, triangle)
-- `/find clear` — clear Find
-- `/find list` — show current Find targets
-- `/find help` — show help
-- `/assist NAME` — set Assist target
+- `/find NAME` — set the finder to `NAME` (uses current target if `NAME` omitted)
+- `/find+ NAME` — add `NAME` to the finder (uses current target if omitted; max 8)
+- `/find reset` — clear the finder list
 
-You can also right-click any unit frame for **Find**, **Add to Find**, **Clear Find**, and **Assist** options.
+You can also right-click any unit frame for **Set Finder**, **Add to Finder**, and **Reset Finder**.
 
 ## Markers
 
-Slot 1 gets the orange circle, slot 2 gets the blue square, slot 3 gets the green triangle. Markers are only applied when the target has no mark, so any manual marks you place are preserved.
+The finder list holds up to 8 names, each tied to one raid marker in this order:
 
-## Note
+1. Circle
+2. Square
+3. Triangle
+4. Star
+5. Diamond
+6. Moon
+7. Cross
+8. Skull
 
-This addon overrides Blizzard's `/assist` chat slash command (it sets your ASSIST macro instead). Inside macros, `/assist NAME` still behaves normally.
+Markers are applied via `PLAYER_TARGET_CHANGED`: whenever you target a unit whose name matches an entry on the list and the unit has no existing mark, the corresponding marker is set. Manual marks are never overwritten.

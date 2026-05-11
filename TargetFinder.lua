@@ -1,20 +1,18 @@
 local addonName = ...
 
-local ADDON_NAME = "TargetShortcuts"
+local ADDON_NAME = "TargetFinder"
 local YELLOW = "|cffffff00"
-local RESET = "|r"
+local COLOR_END = "|r"
 
 local FIND_MACRO = "FIND"
-local ASSIST_MACRO = "ASSIST"
 local FIND_ICON = "Ability_Hunter_SniperShot"
-local ASSIST_ICON = "Ability_DualWield"
-local FIND_MARKERS = { 2, 6, 4 }
-local MAX_TARGETS = 3
+local FIND_MARKERS = { 2, 6, 4, 1, 3, 5, 7, 8 }
+local MAX_TARGETS = 8
 local ACTION_SLOTS = 72
 local GLOW_SECONDS = 4
 
 local function announce(msg)
-    print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. RESET .. " " .. msg)
+    print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. COLOR_END .. " " .. msg)
 end
 
 local function trim(value)
@@ -31,9 +29,24 @@ local function resolveName(input)
     return nil
 end
 
-function FA_Mark(marker)
-    if UnitExists("target") and not GetRaidTargetIndex("target") then
-        SetRaidTarget("target", marker)
+local function readTargets()
+    if not TargetFinderDB then return {} end
+    return TargetFinderDB.findTargets or {}
+end
+
+local function applyMarkerFromTarget()
+    if not UnitExists("target") then return end
+    if GetRaidTargetIndex("target") then return end
+    local name = UnitName("target")
+    if not name then return end
+    local db = TargetFinderDB
+    if not db or not db.findTargets then return end
+    for slot, saved in ipairs(db.findTargets) do
+        if saved == name then
+            local marker = FIND_MARKERS[slot]
+            if marker then SetRaidTarget("target", marker) end
+            return
+        end
     end
 end
 
@@ -46,27 +59,19 @@ local function setMacro(name, icon, body)
     end
 end
 
-local function readTargets()
-    local index = GetMacroIndexByName(FIND_MACRO)
-    if not index or index == 0 then return {} end
-    local body = GetMacroBody(FIND_MACRO) or ""
-    local targets = {}
-    for entry in body:gmatch("/target%s+([^\n]+)") do
-        table.insert(targets, entry)
+local function buildFindBody(targets)
+    if #targets == 0 then return "/cleartarget" end
+    local lines = { "/cleartarget" }
+    for _, name in ipairs(targets) do
+        table.insert(lines, "/target " .. name)
     end
-    return targets
+    return table.concat(lines, "\n")
 end
 
-local function writeFindMacro(targets)
-    local lines = { "/cleartarget" }
-    for slot, name in ipairs(targets) do
-        table.insert(lines, "/target " .. name)
-        local marker = FIND_MARKERS[slot]
-        if marker then
-            table.insert(lines, "/run FA_Mark(" .. marker .. ")")
-        end
-    end
-    setMacro(FIND_MACRO, FIND_ICON, table.concat(lines, "\n"))
+local function writeFinderMacro(targets)
+    TargetFinderDB = TargetFinderDB or {}
+    TargetFinderDB.findTargets = targets
+    setMacro(FIND_MACRO, FIND_ICON, buildFindBody(targets))
 end
 
 local function isMacroOnBar(absIndex)
@@ -79,7 +84,7 @@ local function isMacroOnBar(absIndex)
 end
 
 local function buildGlow(button)
-    if button.tsGlow then return button.tsGlow end
+    if button.tfGlow then return button.tfGlow end
     local glow = button:CreateTexture(nil, "OVERLAY")
     glow:SetAtlas("bags-newitem", true)
     glow:SetBlendMode("ADD")
@@ -102,7 +107,7 @@ local function buildGlow(button)
     fadeOut:SetOrder(2)
 
     glow.anim = anim
-    button.tsGlow = glow
+    button.tfGlow = glow
     return glow
 end
 
@@ -145,17 +150,17 @@ local function hintMacro(name)
     end
 end
 
-local function setFind(name)
+local function setFinder(name)
     if not name then
         announce("no target selected.")
         return
     end
-    writeFindMacro({ name })
+    writeFinderMacro({ name })
     announce(name)
     hintMacro(FIND_MACRO)
 end
 
-local function addFind(name)
+local function addFinder(name)
     if not name then
         announce("no target selected.")
         return
@@ -163,97 +168,43 @@ local function addFind(name)
     local targets = readTargets()
     for _, existing in ipairs(targets) do
         if existing == name then
-            announce(name .. " is already in Find.")
+            announce(name .. " is already tracked.")
             return
         end
     end
     if #targets >= MAX_TARGETS then
-        announce("Find is full: " .. table.concat(targets, ", ") .. ".")
+        announce("Finder is full: " .. table.concat(targets, ", ") .. ".")
         return
     end
     table.insert(targets, name)
-    writeFindMacro(targets)
+    writeFinderMacro(targets)
     announce(table.concat(targets, ", "))
     hintMacro(FIND_MACRO)
 end
 
-local function clearFind()
-    local index = GetMacroIndexByName(FIND_MACRO)
-    if not index or index == 0 then
-        announce("Find is empty.")
-        return
-    end
+local function resetFinder()
     local before = readTargets()
-    EditMacro(index, FIND_MACRO, FIND_ICON, "/cleartarget")
     if #before == 0 then
-        announce("Find is empty.")
-    else
-        announce("Find cleared.")
-    end
-end
-
-local function listFind()
-    local targets = readTargets()
-    if #targets == 0 then
-        announce("Find is empty.")
-    else
-        announce(table.concat(targets, ", "))
-    end
-end
-
-local function showHelp()
-    announce("commands:")
-    print("  /find NAME         set Find target (uses current target if omitted)")
-    print("  /find add NAME     add to Find (max " .. MAX_TARGETS .. ": circle, square, triangle)")
-    print("  /find clear        clear Find")
-    print("  /find list         show Find targets")
-    print("  /find help         this message")
-    print("  /assist NAME       set Assist target")
-    print("  Right-click a unit frame for the same options.")
-    print("  Markers only apply when the target has no mark.")
-end
-
-local function setAssist(name)
-    if not name then
-        announce("no target selected.")
+        announce("Finder is empty.")
         return
     end
-    setMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name)
-    announce("Assist: " .. name)
-    hintMacro(ASSIST_MACRO)
+    writeFinderMacro({})
+    announce("Finder reset.")
 end
 
-SLASH_TARGETSHORTCUTS_FIND1 = "/find"
-SlashCmdList.TARGETSHORTCUTS_FIND = function(msg)
+SLASH_TARGETFINDER_FIND1 = "/find"
+SlashCmdList.TARGETFINDER_FIND = function(msg)
     local arg = trim(msg)
-    if arg then
-        local first, rest = arg:match("^(%S+)%s*(.-)$")
-        local cmd = first and first:lower() or ""
-        if cmd == "help" or cmd == "?" then
-            showHelp()
-            return
-        elseif cmd == "list" then
-            listFind()
-            return
-        elseif cmd == "clear" then
-            clearFind()
-            return
-        elseif cmd == "add" then
-            addFind(resolveName(rest))
-            return
-        end
+    if arg and arg:lower() == "reset" then
+        resetFinder()
+        return
     end
-    setFind(resolveName(msg))
+    setFinder(resolveName(msg))
 end
 
-SLASH_TARGETSHORTCUTS_ADDFIND1 = "/addfind"
-SlashCmdList.TARGETSHORTCUTS_ADDFIND = function(msg)
-    addFind(resolveName(msg))
-end
-
-SLASH_TARGETSHORTCUTS_ASSIST1 = "/assist"
-SlashCmdList.TARGETSHORTCUTS_ASSIST = function(msg)
-    setAssist(resolveName(msg))
+SLASH_TARGETFINDER_ADD1 = "/find+"
+SlashCmdList.TARGETFINDER_ADD = function(msg)
+    addFinder(resolveName(msg))
 end
 
 local UNIT_MENU_TAGS = {
@@ -278,12 +229,11 @@ local function appendMenu(_, root, context)
 
     root:CreateDivider()
     root:CreateTitle(ADDON_NAME)
-    root:CreateButton("Find", function() C_Timer.After(0, function() setFind(name) end) end)
-    root:CreateButton("Add to Find", function() C_Timer.After(0, function() addFind(name) end) end)
+    root:CreateButton("Set Finder", function() C_Timer.After(0, function() setFinder(name) end) end)
+    root:CreateButton("Add to Finder", function() C_Timer.After(0, function() addFinder(name) end) end)
     if #readTargets() > 0 then
-        root:CreateButton("Clear Find", function() C_Timer.After(0, function() clearFind() end) end)
+        root:CreateButton("Reset Finder", function() C_Timer.After(0, function() resetFinder() end) end)
     end
-    root:CreateButton("Assist", function() C_Timer.After(0, function() setAssist(name) end) end)
 end
 
 if Menu and Menu.ModifyMenu then
@@ -294,17 +244,18 @@ end
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
-frame:SetScript("OnEvent", function(self, _, name)
-    if name == addonName then
-        TargetShortcutsDB = TargetShortcutsDB or {}
-        if not TargetShortcutsDB.greeted then
-            TargetShortcutsDB.greeted = true
-            announce("loaded.")
-            print("  /find NAME — set Find target (uses current target if omitted)")
-            print("  /find add NAME — add to Find (max 3: circle, square, triangle)")
-            print("  /find clear  |  /find list  |  /find help  |  /assist NAME")
-            print("  Right-click a unit frame for Find and Assist options.")
-        end
+frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+frame:SetScript("OnEvent", function(self, event, name)
+    if event == "ADDON_LOADED" and name == addonName then
+        TargetFinderDB = TargetFinderDB or {}
+        TargetFinderDB.findTargets = TargetFinderDB.findTargets or {}
+        announce("loaded.")
+        print("  /find NAME    — set finder (uses current target if omitted)")
+        print("  /find+ NAME   — add to finder (max " .. MAX_TARGETS .. ")")
+        print("  /find reset   — reset finder")
+        print("  Right-click a unit frame for finder options.")
         self:UnregisterEvent("ADDON_LOADED")
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        applyMarkerFromTarget()
     end
 end)
