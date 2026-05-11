@@ -10,6 +10,8 @@ local FIND_ICON = "Ability_Hunter_SniperShot"
 local ASSIST_ICON = "Ability_DualWield"
 local FIND_MARKERS = { 2, 6, 4 }
 local MAX_TARGETS = 3
+local ACTION_SLOTS = 72
+local GLOW_SECONDS = 4
 
 local function announce(msg)
     print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. RESET .. " " .. msg)
@@ -67,10 +69,79 @@ local function writeFindMacro(targets)
     setMacro(FIND_MACRO, FIND_ICON, table.concat(lines, "\n"))
 end
 
-local function hintMacro()
-    if TargetShortcutsDB and not TargetShortcutsDB.macroHinted then
-        TargetShortcutsDB.macroHinted = true
-        announce("open /macro and drag FIND and ASSIST to your action bar.")
+local function isMacroOnBar(absIndex)
+    if not absIndex or absIndex == 0 then return false end
+    for slot = 1, ACTION_SLOTS do
+        local kind, id = GetActionInfo(slot)
+        if kind == "macro" and id == absIndex then return true end
+    end
+    return false
+end
+
+local function buildGlow(button)
+    if button.tsGlow then return button.tsGlow end
+    local glow = button:CreateTexture(nil, "OVERLAY")
+    glow:SetAtlas("bags-newitem", true)
+    glow:SetBlendMode("ADD")
+    glow:SetPoint("CENTER", button, "CENTER")
+    local w, h = button:GetSize()
+    glow:SetSize(w * 1.4, h * 1.4)
+    glow:SetAlpha(0)
+
+    local anim = glow:CreateAnimationGroup()
+    anim:SetLooping("REPEAT")
+    local fadeIn = anim:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.35)
+    fadeIn:SetOrder(1)
+    local fadeOut = anim:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(0.35)
+    fadeOut:SetOrder(2)
+
+    glow.anim = anim
+    button.tsGlow = glow
+    return glow
+end
+
+local function pulseGlow(button)
+    local glow = buildGlow(button)
+    glow.token = (glow.token or 0) + 1
+    local token = glow.token
+    glow:Show()
+    if not glow.anim:IsPlaying() then glow.anim:Play() end
+    C_Timer.After(GLOW_SECONDS, function()
+        if glow.token ~= token then return end
+        glow.anim:Stop()
+        glow:SetAlpha(0)
+        glow:Hide()
+    end)
+end
+
+local function focusMacro(absIndex)
+    if not MacroFrame then return end
+    local tabID = absIndex <= MAX_ACCOUNT_MACROS and 1 or 2
+    local relative = absIndex - (tabID == 1 and 0 or MAX_ACCOUNT_MACROS)
+    MacroFrame:ChangeTab(tabID)
+    MacroFrame:SelectMacro(relative, true)
+    if MacroFrame.SelectedMacroButton then
+        pulseGlow(MacroFrame.SelectedMacroButton)
+    end
+end
+
+local function hintMacro(name)
+    if InCombatLockdown() then return end
+    local absIndex = GetMacroIndexByName(name)
+    if not absIndex or absIndex == 0 then return end
+    if isMacroOnBar(absIndex) then return end
+
+    ShowMacroFrame()
+    if MacroFrame then
+        focusMacro(absIndex)
+    else
+        C_Timer.After(0, function() focusMacro(absIndex) end)
     end
 end
 
@@ -81,7 +152,7 @@ local function setFind(name)
     end
     writeFindMacro({ name })
     announce(name)
-    hintMacro()
+    hintMacro(FIND_MACRO)
 end
 
 local function addFind(name)
@@ -103,7 +174,7 @@ local function addFind(name)
     table.insert(targets, name)
     writeFindMacro(targets)
     announce(table.concat(targets, ", "))
-    hintMacro()
+    hintMacro(FIND_MACRO)
 end
 
 local function clearFind()
@@ -149,7 +220,7 @@ local function setAssist(name)
     end
     setMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name)
     announce("Assist: " .. name)
-    hintMacro()
+    hintMacro(ASSIST_MACRO)
 end
 
 SLASH_TARGETSHORTCUTS_FIND1 = "/find"
