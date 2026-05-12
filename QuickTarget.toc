@@ -1,9 +1,9 @@
 ## Interface: 11570
-## Title: TargetFinder
+## Title: QuickTarget
 ## Notes: Find and auto-mark named targets with raid markers, plus a quick assist macro for WoW Classic 1.15.x.
 ## Author: MIYANKO
 ## Version: 2.0.0
 ## IconTexture: 132177
-## SavedVariables: TargetFinderDB
+## SavedVariables: QuickTargetDB
 
-TargetFinder.lua
+QuickTarget.lua

@@ -1,6 +1,6 @@
 local addonName = ...
 
-local ADDON_NAME = "TargetFinder"
+local ADDON_NAME = "QuickTarget"
 local YELLOW = "|cffffff00"
 local COLOR_END = "|r"
 
@@ -32,8 +32,8 @@ local function resolveName(input)
 end
 
 local function readTargets()
-    if not TargetFinderDB then return {} end
-    return TargetFinderDB.findTargets or {}
+    if not QuickTargetDB then return {} end
+    return QuickTargetDB.findTargets or {}
 end
 
 local function applyMarkerFromTarget()
@@ -41,7 +41,7 @@ local function applyMarkerFromTarget()
     if GetRaidTargetIndex("target") then return end
     local name = UnitName("target")
     if not name then return end
-    local db = TargetFinderDB
+    local db = QuickTargetDB
     if not db or not db.findTargets then return end
     for slot, saved in ipairs(db.findTargets) do
         if saved == name then
@@ -71,8 +71,8 @@ local function buildFindBody(targets)
 end
 
 local function writeFinderMacro(targets)
-    TargetFinderDB = TargetFinderDB or {}
-    TargetFinderDB.findTargets = targets
+    QuickTargetDB = QuickTargetDB or {}
+    QuickTargetDB.findTargets = targets
     setMacro(FIND_MACRO, FIND_ICON, buildFindBody(targets))
 end
 
@@ -86,7 +86,7 @@ local function isMacroOnBar(absIndex)
 end
 
 local function buildGlow(button)
-    if button.tfGlow then return button.tfGlow end
+    if button.qtGlow then return button.qtGlow end
     local glow = button:CreateTexture(nil, "OVERLAY")
     glow:SetAtlas("bags-newitem", true)
     glow:SetBlendMode("ADD")
@@ -109,7 +109,7 @@ local function buildGlow(button)
     fadeOut:SetOrder(2)
 
     glow.anim = anim
-    button.tfGlow = glow
+    button.qtGlow = glow
     return glow
 end
 
@@ -199,15 +199,15 @@ local function setAssist(name)
         announce("no target selected.")
         return
     end
-    TargetFinderDB = TargetFinderDB or {}
-    TargetFinderDB.assistTarget = name
+    QuickTargetDB = QuickTargetDB or {}
+    QuickTargetDB.assistTarget = name
     setMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name)
     announce("Assist: " .. name)
     hintMacro(ASSIST_MACRO)
 end
 
-SLASH_TARGETFINDER_FIND1 = "/find"
-SlashCmdList.TARGETFINDER_FIND = function(msg)
+SLASH_QUICKTARGET_FIND1 = "/find"
+SlashCmdList.QUICKTARGET_FIND = function(msg)
     local arg = trim(msg)
     if arg and arg:lower() == "reset" then
         resetFinder()
@@ -216,13 +216,13 @@ SlashCmdList.TARGETFINDER_FIND = function(msg)
     setFinder(resolveName(msg))
 end
 
-SLASH_TARGETFINDER_ADD1 = "/find+"
-SlashCmdList.TARGETFINDER_ADD = function(msg)
+SLASH_QUICKTARGET_ADD1 = "/find+"
+SlashCmdList.QUICKTARGET_ADD = function(msg)
     addFinder(resolveName(msg))
 end
 
-SLASH_TARGETFINDER_ASSIST1 = "/assist"
-SlashCmdList.TARGETFINDER_ASSIST = function(msg)
+SLASH_QUICKTARGET_ASSIST1 = "/assist"
+SlashCmdList.QUICKTARGET_ASSIST = function(msg)
     setAssist(resolveName(msg))
 end
 
@@ -267,8 +267,8 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
 frame:SetScript("OnEvent", function(self, event, name)
     if event == "ADDON_LOADED" and name == addonName then
-        TargetFinderDB = TargetFinderDB or {}
-        TargetFinderDB.findTargets = TargetFinderDB.findTargets or {}
+        QuickTargetDB = QuickTargetDB or {}
+        QuickTargetDB.findTargets = QuickTargetDB.findTargets or {}
         announce("loaded.")
         print("  /find NAME    — set finder (uses current target if omitted)")
         print("  /find+ NAME   — add to finder (max " .. MAX_TARGETS .. ")")
