@@ -8,6 +8,8 @@ local FIND_MACRO = "FIND"
 local FIND_ICON = "Ability_Hunter_SniperShot"
 local FIND_MARKERS = { 2, 6, 4, 1, 3, 5, 7, 8 }
 local MAX_TARGETS = 8
+local ASSIST_MACRO = "ASSIST"
+local ASSIST_ICON = "Ability_DualWield"
 local ACTION_SLOTS = 72
 local GLOW_SECONDS = 4
 
@@ -192,6 +194,18 @@ local function resetFinder()
     announce("Finder reset.")
 end
 
+local function setAssist(name)
+    if not name then
+        announce("no target selected.")
+        return
+    end
+    TargetFinderDB = TargetFinderDB or {}
+    TargetFinderDB.assistTarget = name
+    setMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name)
+    announce("Assist: " .. name)
+    hintMacro(ASSIST_MACRO)
+end
+
 SLASH_TARGETFINDER_FIND1 = "/find"
 SlashCmdList.TARGETFINDER_FIND = function(msg)
     local arg = trim(msg)
@@ -205,6 +219,11 @@ end
 SLASH_TARGETFINDER_ADD1 = "/find+"
 SlashCmdList.TARGETFINDER_ADD = function(msg)
     addFinder(resolveName(msg))
+end
+
+SLASH_TARGETFINDER_ASSIST1 = "/assist"
+SlashCmdList.TARGETFINDER_ASSIST = function(msg)
+    setAssist(resolveName(msg))
 end
 
 local UNIT_MENU_TAGS = {
@@ -234,6 +253,7 @@ local function appendMenu(_, root, context)
     if #readTargets() > 0 then
         root:CreateButton("Reset Finder", function() C_Timer.After(0, function() resetFinder() end) end)
     end
+    root:CreateButton("Set Assist", function() C_Timer.After(0, function() setAssist(name) end) end)
 end
 
 if Menu and Menu.ModifyMenu then
@@ -253,7 +273,8 @@ frame:SetScript("OnEvent", function(self, event, name)
         print("  /find NAME    — set finder (uses current target if omitted)")
         print("  /find+ NAME   — add to finder (max " .. MAX_TARGETS .. ")")
         print("  /find reset   — reset finder")
-        print("  Right-click a unit frame for finder options.")
+        print("  /assist NAME  — set assist (uses current target if omitted)")
+        print("  Right-click a unit frame for finder and assist options.")
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_TARGET_CHANGED" then
         applyMarkerFromTarget()
