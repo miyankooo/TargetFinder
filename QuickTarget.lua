@@ -12,6 +12,7 @@ local ASSIST_MACRO = "ASSIST"
 local ASSIST_ICON = "Ability_DualWield"
 local ACTION_SLOTS = 72
 local GLOW_SECONDS = 4
+local MARK_THROTTLE = 0.15
 
 local function announce(msg)
     print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. COLOR_END .. " " .. msg)
@@ -31,25 +32,50 @@ local function resolveName(input)
     return nil
 end
 
+local findTargets = {}
+
 local function readTargets()
-    if not QuickTargetDB then return {} end
-    return QuickTargetDB.findTargets or {}
+    return findTargets
+end
+
+local lastMarkTime = 0
+
+local function applySlotMarker(slot)
+    if not UnitExists("target") then return end
+    local marker = FIND_MARKERS[slot]
+    if not marker then return end
+    if GetRaidTargetIndex("target") == marker then return end
+    local now = GetTime()
+    if now - lastMarkTime < MARK_THROTTLE then return end
+    lastMarkTime = now
+    SetRaidTarget("target", marker)
 end
 
 local function applyMarkerFromTarget()
     if not UnitExists("target") then return end
-    if GetRaidTargetIndex("target") then return end
     local name = UnitName("target")
     if not name then return end
-    local db = QuickTargetDB
-    if not db or not db.findTargets then return end
-    for slot, saved in ipairs(db.findTargets) do
-        if saved == name then
-            local marker = FIND_MARKERS[slot]
-            if marker then SetRaidTarget("target", marker) end
+    local lowered = name:lower()
+    for slot, saved in ipairs(findTargets) do
+        if saved and lowered:find(saved:lower(), 1, true) then
+            applySlotMarker(slot)
             return
         end
     end
+end
+
+local _qtLastGuid
+
+function QuickTargetMark(slot)
+    if not slot then
+        _qtLastGuid = nil
+        return
+    end
+    if not UnitExists("target") then return end
+    local guid = UnitGUID("target")
+    if guid == _qtLastGuid then return end
+    _qtLastGuid = guid
+    applySlotMarker(slot)
 end
 
 local function setMacro(name, icon, body)
@@ -63,16 +89,16 @@ end
 
 local function buildFindBody(targets)
     if #targets == 0 then return "/cleartarget" end
-    local lines = { "/cleartarget" }
-    for _, name in ipairs(targets) do
+    local lines = { "/run QuickTargetMark()", "/cleartarget" }
+    for slot, name in ipairs(targets) do
         table.insert(lines, "/target " .. name)
+        table.insert(lines, "/run QuickTargetMark(" .. slot .. ")")
     end
     return table.concat(lines, "\n")
 end
 
 local function writeFinderMacro(targets)
-    QuickTargetDB = QuickTargetDB or {}
-    QuickTargetDB.findTargets = targets
+    findTargets = targets
     setMacro(FIND_MACRO, FIND_ICON, buildFindBody(targets))
 end
 
@@ -158,6 +184,7 @@ local function setFinder(name)
         return
     end
     writeFinderMacro({ name })
+    applySlotMarker(1)
     announce(name)
     hintMacro(FIND_MACRO)
 end
@@ -180,6 +207,7 @@ local function addFinder(name)
     end
     table.insert(targets, name)
     writeFinderMacro(targets)
+    applySlotMarker(#targets)
     announce(table.concat(targets, ", "))
     hintMacro(FIND_MACRO)
 end
@@ -199,8 +227,6 @@ local function setAssist(name)
         announce("no target selected.")
         return
     end
-    QuickTargetDB = QuickTargetDB or {}
-    QuickTargetDB.assistTarget = name
     setMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name)
     announce("Assist: " .. name)
     hintMacro(ASSIST_MACRO)
@@ -216,7 +242,7 @@ SlashCmdList.QUICKTARGET_FIND = function(msg)
     setFinder(resolveName(msg))
 end
 
-SLASH_QUICKTARGET_ADD1 = "/find+"
+SLASH_QUICKTARGET_ADD1 = "/findadd"
 SlashCmdList.QUICKTARGET_ADD = function(msg)
     addFinder(resolveName(msg))
 end
@@ -267,11 +293,9 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
 frame:SetScript("OnEvent", function(self, event, name)
     if event == "ADDON_LOADED" and name == addonName then
-        QuickTargetDB = QuickTargetDB or {}
-        QuickTargetDB.findTargets = QuickTargetDB.findTargets or {}
         announce("loaded.")
         print("  /find NAME    — set finder (uses current target if omitted)")
-        print("  /find+ NAME   — add to finder (max " .. MAX_TARGETS .. ")")
+        print("  /findadd NAME — add to finder (max " .. MAX_TARGETS .. ")")
         print("  /find reset   — reset finder")
         print("  /assist NAME  — set assist (uses current target if omitted)")
         print("  Right-click a unit frame for finder and assist options.")

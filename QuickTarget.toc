@@ -4,6 +4,5 @@
 ## Author: MIYANKO
 ## Version: 2.0.0
 ## IconTexture: 132177
-## SavedVariables: QuickTargetDB
 
 QuickTarget.lua
