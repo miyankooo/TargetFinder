@@ -8,12 +8,17 @@ QuickTarget maintains a **FIND** macro that targets each name on your finder lis
 
 ## Commands
 
+- `/qt` — open the finder panel (add, remove, reset entries in a native window)
 - `/find NAME` — set the finder to `NAME` (uses current target if `NAME` omitted)
 - `/findadd NAME` — add `NAME` to the finder (uses current target if omitted; max 8)
 - `/find reset` — clear the finder list
 - `/assist NAME` — set the assist macro to `NAME` (uses current target if omitted; overwrites each time)
 
-You can also right-click any unit frame for **Set Finder**, **Add to Finder**, **Reset Finder**, and **Set Assist**.
+You can also right-click any unit frame for **Set Finder**, **Add to Finder**, **Remove from Finder**, **Reset Finder**, and **Set Assist**.
+
+## Panel
+
+`/qt` toggles a draggable panel showing all eight finder slots, each with its raid marker icon, name, and a close button to remove that entry. An input field at the bottom adds a new name (or the current target if the field is left empty), and a **Reset** button clears the list. Press Escape to close the panel.
 
 ## Markers
 

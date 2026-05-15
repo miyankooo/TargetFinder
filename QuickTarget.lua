@@ -14,6 +14,9 @@ local ACTION_SLOTS = 72
 local GLOW_SECONDS = 4
 local MARK_THROTTLE = 0.15
 
+local MINIMAP_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
+local MINIMAP_DEFAULT_POS = 215
+
 local function announce(msg)
     print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. COLOR_END .. " " .. msg)
 end
@@ -97,9 +100,12 @@ local function buildFindBody(targets)
     return table.concat(lines, "\n")
 end
 
+local refreshPanel
+
 local function writeFinderMacro(targets)
     findTargets = targets
     setMacro(FIND_MACRO, FIND_ICON, buildFindBody(targets))
+    if refreshPanel then refreshPanel() end
 end
 
 local function isMacroOnBar(absIndex)
@@ -180,7 +186,7 @@ end
 
 local function setFinder(name)
     if not name then
-        announce("no target selected.")
+        announce("No target selected.")
         return
     end
     writeFinderMacro({ name })
@@ -191,7 +197,7 @@ end
 
 local function addFinder(name)
     if not name then
-        announce("no target selected.")
+        announce("No target selected.")
         return
     end
     local targets = readTargets()
@@ -212,6 +218,15 @@ local function addFinder(name)
     hintMacro(FIND_MACRO)
 end
 
+local function removeFinder(slot)
+    local targets = readTargets()
+    local removed = targets[slot]
+    if not removed then return end
+    table.remove(targets, slot)
+    writeFinderMacro(targets)
+    announce("Removed: " .. removed)
+end
+
 local function resetFinder()
     local before = readTargets()
     if #before == 0 then
@@ -224,13 +239,185 @@ end
 
 local function setAssist(name)
     if not name then
-        announce("no target selected.")
+        announce("No target selected.")
         return
     end
     setMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name)
     announce("Assist: " .. name)
     hintMacro(ASSIST_MACRO)
 end
+
+local panel
+
+local function submitInput(input)
+    local typed = trim(input:GetText())
+    if typed then
+        addFinder(typed)
+    else
+        addFinder(resolveName(nil))
+    end
+    input:SetText("")
+    input:ClearFocus()
+end
+
+local function buildPanel()
+    if panel then return panel end
+
+    panel = CreateFrame("Frame", "QuickTargetPanel", UIParent, "BasicFrameTemplateWithInset")
+    panel:SetSize(280, 340)
+    panel:SetPoint("CENTER")
+    panel:SetFrameStrata("DIALOG")
+    panel:SetClampedToScreen(true)
+    panel:SetMovable(true)
+    panel:EnableMouse(true)
+    panel:RegisterForDrag("LeftButton")
+    panel:SetScript("OnDragStart", panel.StartMoving)
+    panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+    panel:Hide()
+    panel.TitleText:SetText(ADDON_NAME)
+    tinsert(UISpecialFrames, "QuickTargetPanel")
+
+    local header = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    header:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -32)
+    header:SetText("Tracked targets")
+
+    local cap = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    cap:SetPoint("LEFT", header, "RIGHT", 6, 0)
+    cap:SetText("(max " .. MAX_TARGETS .. ")")
+
+    panel.rows = {}
+    for slot = 1, MAX_TARGETS do
+        local row = CreateFrame("Frame", nil, panel)
+        row:SetHeight(22)
+        if slot == 1 then
+            row:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
+            row:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -14, -58)
+        else
+            row:SetPoint("TOPLEFT", panel.rows[slot - 1], "BOTTOMLEFT", 0, -2)
+            row:SetPoint("TOPRIGHT", panel.rows[slot - 1], "BOTTOMRIGHT", 0, -2)
+        end
+
+        local index = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        index:SetPoint("LEFT", row, "LEFT", 2, 0)
+        index:SetWidth(18)
+        index:SetJustifyH("RIGHT")
+        index:SetText(slot .. ".")
+
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(18, 18)
+        icon:SetPoint("LEFT", index, "RIGHT", 4, 0)
+        row.icon = icon
+
+        local name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        name:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+        name:SetPoint("RIGHT", row, "RIGHT", -24, 0)
+        name:SetJustifyH("LEFT")
+        name:SetWordWrap(false)
+        row.name = name
+
+        local remove = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+        remove:SetSize(22, 22)
+        remove:SetPoint("RIGHT", row, "RIGHT", 4, 0)
+        remove:SetScript("OnClick", function() removeFinder(slot) end)
+        row.remove = remove
+
+        panel.rows[slot] = row
+    end
+
+    local addLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    addLabel:SetPoint("TOPLEFT", panel.rows[MAX_TARGETS], "BOTTOMLEFT", 0, -12)
+    addLabel:SetText("Add target:")
+
+    local input = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    input:SetSize(170, 20)
+    input:SetPoint("TOPLEFT", addLabel, "BOTTOMLEFT", 6, -6)
+    input:SetAutoFocus(false)
+    input:SetMaxLetters(40)
+    input:SetScript("OnEnterPressed", function(self) submitInput(self) end)
+    input:SetScript("OnEscapePressed", function(self) self:SetText("") self:ClearFocus() end)
+
+    local addButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    addButton:SetSize(60, 22)
+    addButton:SetPoint("LEFT", input, "RIGHT", 10, 0)
+    addButton:SetText("Add")
+    addButton:SetScript("OnClick", function() submitInput(input) end)
+
+    local resetButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    resetButton:SetSize(80, 22)
+    resetButton:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -14, 14)
+    resetButton:SetText("Reset")
+    resetButton:SetScript("OnClick", resetFinder)
+
+    local hint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    hint:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 14, 20)
+    hint:SetPoint("RIGHT", resetButton, "LEFT", -8, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Leave the field empty to use the current target.")
+
+    return panel
+end
+
+refreshPanel = function()
+    if not panel then return end
+    local targets = readTargets()
+    for slot = 1, MAX_TARGETS do
+        local row = panel.rows[slot]
+        local name = targets[slot]
+        if name then
+            row.name:SetText(name)
+            row.name:SetTextColor(1, 1, 1)
+            SetRaidTargetIconTexture(row.icon, FIND_MARKERS[slot])
+            row.icon:Show()
+            row.remove:Show()
+        else
+            row.name:SetText("—")
+            row.name:SetTextColor(0.5, 0.5, 0.5)
+            row.icon:Hide()
+            row.remove:Hide()
+        end
+    end
+end
+
+local function togglePanel()
+    buildPanel()
+    if panel:IsShown() then
+        panel:Hide()
+        return
+    end
+    refreshPanel()
+    panel:Show()
+end
+
+local function setupMinimapButton()
+    local LDB = LibStub("LibDataBroker-1.1")
+    local LDBIcon = LibStub("LibDBIcon-1.0")
+    if LDBIcon:IsRegistered(ADDON_NAME) then return end
+
+    local dataObject = LDB:NewDataObject(ADDON_NAME, {
+        type = "launcher",
+        text = ADDON_NAME,
+        icon = MINIMAP_ICON,
+        OnClick = function(_, button)
+            if button == "LeftButton" then
+                togglePanel()
+            end
+        end,
+        OnTooltipShow = function(tt)
+            tt:AddLine(ADDON_NAME)
+            tt:AddLine("|cffffffffClick|r to toggle the panel.", 1, 1, 1)
+        end,
+    })
+
+    if QuickTargetDB.minimap.angle and not QuickTargetDB.minimap.minimapPos then
+        QuickTargetDB.minimap.minimapPos = QuickTargetDB.minimap.angle
+    end
+    QuickTargetDB.minimap.angle = nil
+
+    LDBIcon:Register(ADDON_NAME, dataObject, QuickTargetDB.minimap)
+end
+
+SLASH_QUICKTARGET_PANEL1 = "/qt"
+SlashCmdList.QUICKTARGET_PANEL = togglePanel
 
 SLASH_QUICKTARGET_FIND1 = "/find"
 SlashCmdList.QUICKTARGET_FIND = function(msg)
@@ -276,7 +463,15 @@ local function appendMenu(_, root, context)
     root:CreateTitle(ADDON_NAME)
     root:CreateButton("Set Finder", function() C_Timer.After(0, function() setFinder(name) end) end)
     root:CreateButton("Add to Finder", function() C_Timer.After(0, function() addFinder(name) end) end)
-    if #readTargets() > 0 then
+    local targets = readTargets()
+    local lowered = name:lower()
+    for slot, saved in ipairs(targets) do
+        if saved and lowered:find(saved:lower(), 1, true) then
+            root:CreateButton("Remove from Finder", function() C_Timer.After(0, function() removeFinder(slot) end) end)
+            break
+        end
+    end
+    if #targets > 0 then
         root:CreateButton("Reset Finder", function() C_Timer.After(0, function() resetFinder() end) end)
     end
     root:CreateButton("Set Assist", function() C_Timer.After(0, function() setAssist(name) end) end)
@@ -290,16 +485,25 @@ end
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
+frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
 frame:SetScript("OnEvent", function(self, event, name)
     if event == "ADDON_LOADED" and name == addonName then
-        announce("loaded.")
+        if type(QuickTargetDB) ~= "table" then QuickTargetDB = {} end
+        if type(QuickTargetDB.minimap) ~= "table" then
+            QuickTargetDB.minimap = { hide = false, minimapPos = MINIMAP_DEFAULT_POS }
+        end
+        announce("Loaded.")
+        print("  /qt           — open the finder panel")
         print("  /find NAME    — set finder (uses current target if omitted)")
         print("  /findadd NAME — add to finder (max " .. MAX_TARGETS .. ")")
         print("  /find reset   — reset finder")
         print("  /assist NAME  — set assist (uses current target if omitted)")
         print("  Right-click a unit frame for finder and assist options.")
         self:UnregisterEvent("ADDON_LOADED")
+    elseif event == "PLAYER_LOGIN" then
+        setupMinimapButton()
+        self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_TARGET_CHANGED" then
         applyMarkerFromTarget()
     end
