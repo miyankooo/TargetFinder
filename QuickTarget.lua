@@ -104,6 +104,7 @@ local refreshPanel
 
 local function writeFinderMacro(targets)
     findTargets = targets
+    if QuickTargetCharDB then QuickTargetCharDB.targets = targets end
     setMacro(FIND_MACRO, FIND_ICON, buildFindBody(targets))
     if refreshPanel then refreshPanel() end
 end
@@ -526,9 +527,13 @@ frame:SetScript("OnEvent", function(self, event, name)
         if type(QuickTargetDB.minimap) ~= "table" then
             QuickTargetDB.minimap = { hide = false, minimapPos = MINIMAP_DEFAULT_POS }
         end
+        if type(QuickTargetCharDB) ~= "table" then QuickTargetCharDB = {} end
+        if type(QuickTargetCharDB.targets) ~= "table" then QuickTargetCharDB.targets = {} end
+        findTargets = QuickTargetCharDB.targets
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         setupMinimapButton()
+        if #findTargets > 0 then writeFinderMacro(findTargets) end
         announce("Loaded. Type /qt help for available commands.")
         self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_TARGET_CHANGED" then

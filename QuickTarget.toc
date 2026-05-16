@@ -5,6 +5,7 @@
 ## Version: 2.1.0
 ## IconTexture: 132177
 ## SavedVariables: QuickTargetDB
+## SavedVariablesPerCharacter: QuickTargetCharDB
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
