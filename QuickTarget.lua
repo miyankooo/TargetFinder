@@ -185,6 +185,25 @@ local function hintMacro(name)
     end
 end
 
+local function markNearbyForSlot(slot)
+    local pattern = findTargets[slot]
+    if not pattern then return 0 end
+    local lower = pattern:lower()
+    local marker = FIND_MARKERS[slot]
+    local count = 0
+    for i = 1, 40 do
+        local unit = "nameplate" .. i
+        if UnitExists(unit) then
+            local name = UnitName(unit)
+            if name and name:lower():find(lower, 1, true) then
+                SetRaidTarget(unit, marker)
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
 local function setFinder(name)
     if not name then
         announce("No target selected.")
@@ -192,7 +211,9 @@ local function setFinder(name)
     end
     writeFinderMacro({ name })
     applySlotMarker(1)
-    announce(name)
+    local count = markNearbyForSlot(1)
+    local suffix = count > 0 and " — " .. count .. " marked" or ""
+    announce(name .. suffix)
     hintMacro(FIND_MACRO)
 end
 
@@ -214,8 +235,11 @@ local function addFinder(name)
     end
     table.insert(targets, name)
     writeFinderMacro(targets)
-    applySlotMarker(#targets)
-    announce(table.concat(targets, ", "))
+    local slot = #targets
+    applySlotMarker(slot)
+    local count = markNearbyForSlot(slot)
+    local suffix = count > 0 and " — " .. count .. " marked" or ""
+    announce(table.concat(targets, ", ") .. suffix)
     hintMacro(FIND_MACRO)
 end
 
