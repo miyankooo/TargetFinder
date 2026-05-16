@@ -475,6 +475,13 @@ local UNIT_MENU_TAGS = {
     "MENU_UNIT_FRIEND",
 }
 
+local function canAssistContext(context)
+    if context.unit and UnitExists(context.unit) then
+        return UnitCanAssist("player", context.unit)
+    end
+    return true
+end
+
 local function appendMenu(_, root, context)
     if not context then return end
     local name = context.name
@@ -498,7 +505,9 @@ local function appendMenu(_, root, context)
     if #targets > 0 then
         root:CreateButton("Reset Finder", function() C_Timer.After(0, function() resetFinder() end) end)
     end
-    root:CreateButton("Set Assist", function() C_Timer.After(0, function() setAssist(name) end) end)
+    if canAssistContext(context) then
+        root:CreateButton("Set Assist", function() C_Timer.After(0, function() setAssist(name) end) end)
+    end
 end
 
 if Menu and Menu.ModifyMenu then
