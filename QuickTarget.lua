@@ -416,8 +416,32 @@ local function setupMinimapButton()
     LDBIcon:Register(ADDON_NAME, dataObject, QuickTargetDB.minimap)
 end
 
+local QT_HELP_LINES = {
+    "/qt           -- open the finder panel",
+    "/qt help      -- list available commands",
+    "/find NAME    -- set finder (uses current target if omitted)",
+    "/findadd NAME -- add to finder (max " .. MAX_TARGETS .. ")",
+    "/find reset   -- reset finder",
+    "/assist NAME  -- set assist (uses current target if omitted)",
+    "Right-click a unit frame for finder and assist options.",
+}
+
+local function printHelp()
+    announce("Commands:")
+    for _, line in ipairs(QT_HELP_LINES) do
+        print("  " .. line)
+    end
+end
+
 SLASH_QUICKTARGET_PANEL1 = "/qt"
-SlashCmdList.QUICKTARGET_PANEL = togglePanel
+SlashCmdList.QUICKTARGET_PANEL = function(msg)
+    local arg = trim(msg)
+    if arg and arg:lower() == "help" then
+        printHelp()
+        return
+    end
+    togglePanel()
+end
 
 SLASH_QUICKTARGET_FIND1 = "/find"
 SlashCmdList.QUICKTARGET_FIND = function(msg)
@@ -493,16 +517,10 @@ frame:SetScript("OnEvent", function(self, event, name)
         if type(QuickTargetDB.minimap) ~= "table" then
             QuickTargetDB.minimap = { hide = false, minimapPos = MINIMAP_DEFAULT_POS }
         end
-        announce("Loaded.")
-        print("  /qt           — open the finder panel")
-        print("  /find NAME    — set finder (uses current target if omitted)")
-        print("  /findadd NAME — add to finder (max " .. MAX_TARGETS .. ")")
-        print("  /find reset   — reset finder")
-        print("  /assist NAME  — set assist (uses current target if omitted)")
-        print("  Right-click a unit frame for finder and assist options.")
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         setupMinimapButton()
+        announce("Loaded. Type /qt help for available commands.")
         self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_TARGET_CHANGED" then
         applyMarkerFromTarget()
