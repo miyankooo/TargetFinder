@@ -298,6 +298,7 @@ local function buildPanel()
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", panel.StartMoving)
     panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+    panel:SetScript("OnShow", function() refreshPanel() end)
     panel:Hide()
     panel.TitleText:SetText(ADDON_NAME)
     tinsert(UISpecialFrames, "QuickTargetPanel")
@@ -407,10 +408,9 @@ local function togglePanel()
     buildPanel()
     if panel:IsShown() then
         panel:Hide()
-        return
+    else
+        panel:Show()
     end
-    refreshPanel()
-    panel:Show()
 end
 
 local function setupMinimapButton()
