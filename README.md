@@ -24,14 +24,14 @@ You can also right-click any unit frame for **Set Finder**, **Add to Finder**, *
 
 The finder list holds up to 8 names, each tied to one raid marker in this order:
 
-1. Circle
+1. Skull
 2. Square
-3. Triangle
+3. Circle
 4. Star
-5. Diamond
-6. Moon
-7. Cross
-8. Skull
+5. Cross
+6. Triangle
+7. Diamond
+8. Moon
 
 `/find` and `/findadd` apply the new slot's marker to your current target immediately. The **FIND** macro emits `/run QuickTargetMark(slot)` after each `/target` line, so whichever unit `/target` actually acquired (including fuzzy matches like `commander` → "Commander Ilya") gets the slot's marker. Tab- or click-targeting a saved unit outside the macro also applies its marker via `PLAYER_TARGET_CHANGED`, using a case-insensitive substring match so partial names like `commander` still match "Commander Ilya". Marker writes are deduped, so spamming the macro never causes flicker.
 

@@ -6,7 +6,7 @@ local COLOR_END = "|r"
 
 local FIND_MACRO = "FIND"
 local FIND_ICON = "Ability_Hunter_SniperShot"
-local FIND_MARKERS = { 2, 6, 4, 1, 3, 5, 7, 8 }
+local FIND_MARKERS = { 8, 6, 2, 1, 7, 4, 3, 5 }
 local MAX_TARGETS = 8
 local ASSIST_MACRO = "ASSIST"
 local ASSIST_ICON = "Ability_DualWield"
