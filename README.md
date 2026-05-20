@@ -1,38 +1,74 @@
-# QuickTarget
+# TargetFinder
 
-Find and auto-mark named targets with raid markers, plus a quick assist macro, for WoW Classic 1.15.x.
+Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; works as a pure manual list when it isn't. WoW Classic 1.15.x.
 
 ## How it works
 
-QuickTarget maintains a **FIND** macro that targets each name on your finder list in order and then applies the matching raid marker to whichever unit was acquired. It also maintains an **ASSIST** macro that assists a named player. After your first `/find` or `/assist` command, open the macro book (`/m`) and drag **FIND** or **ASSIST** onto your action bar.
+TargetFinder maintains a single **FIND** macro that runs `/cleartarget` followed by a `/target NAME` line for each entry in your tracked list. The first name whose unit is in range becomes your target, and the addon automatically applies that slot's raid marker via `PLAYER_TARGET_CHANGED`. Spam the macro to cycle through your tracked NPCs as they come within range.
 
-## Commands
-
-- `/qt` — open the finder panel (add, remove, reset entries in a native window)
-- `/find NAME` — set the finder to `NAME` (uses current target if `NAME` omitted)
-- `/findadd NAME` — add `NAME` to the finder (uses current target if omitted; max 8)
-- `/find reset` — clear the finder list
-- `/assist NAME` — set the assist macro to `NAME` (uses current target if omitted; overwrites each time)
-
-You can also right-click any unit frame for **Set Finder**, **Add to Finder**, **Remove from Finder**, **Reset Finder**, and **Set Assist**.
+After you first add something, open the macro book (`/m`) and drag **FIND** onto your action bar.
 
 ## Panel
 
-`/qt` toggles a draggable panel showing all eight finder slots, each with its raid marker icon, name, and a close button to remove that entry. An input field at the bottom adds a new name (or the current target if the field is left empty), and a **Reset** button clears the list. Press Escape to close the panel.
+`/tf` (or left-click the minimap icon) toggles a draggable panel showing all eight slots:
+
+- Each slot displays its assigned raid marker, the tracked NPC name, and a close button to remove it.
+- **Add Nearby Quest NPCs** — clears the list and refills it with quest-related NPCs from your current zone, sorted by actual distance to your character. Requires Questie.
+- **Add target** input — type any NPC or quest name; suggestions appear in a popup (Questie required for suggestions).
+- **Add** — adds the typed name (or your current target if the input is empty).
+- **Clear** — empties the list.
+
+Press Escape to close the panel.
+
+## Search (Questie required)
+
+The input box matches both NPC names from Questie's database and quest names from your current quest log. Quest-related NPCs are tagged with their quest name in brackets and grouped by role:
+
+- ⚔️ **Kill** — `objectives.creatures` and kill-credit alternates
+- 🎒 **Drop** — NPCs that drop items required by your quest objectives
+- ❗ **Quest giver** — `startedBy` and `finishedBy` NPCs
+
+Each appears with the matching Questie icon (sword, bag, gold `!`). Within the suggestion popup, quest rows are labelled `[Quest] <name>`; clicking one adds every NPC tied to that quest in one batch.
+
+The **Add All** footer button in the popup adds every visible suggestion, expanding any quest rows into their NPC list and deduping.
+
+## Minimap icon
+
+- **Left-click** — toggle the panel.
+- **Right-click** — refresh the list with nearby quest NPCs (same as the panel button). Requires Questie.
+
+## Right-click unit-frame menu
+
+Right-click any unit frame (target, party, raid, etc.) for:
+
+- **Set Target** — replace the list with this NPC.
+- **Add Target** — append this NPC.
+- **Remove Target** — shown only if this NPC is already tracked.
+- **Clear Targets** — shown only if the list isn't empty.
 
 ## Markers
 
-The finder list holds up to 8 names, each tied to one raid marker in this order:
+The list holds up to 8 names, each tied to one raid marker in this order:
 
 1. Skull
-2. Square
-3. Circle
-4. Star
-5. Cross
-6. Triangle
-7. Diamond
+2. Cross
+3. Square
+4. Triangle
+5. Diamond
+6. Circle
+7. Star
 8. Moon
 
-`/find` and `/findadd` apply the new slot's marker to your current target immediately. The **FIND** macro emits `/run QuickTargetMark(slot)` after each `/target` line, so whichever unit `/target` actually acquired (including fuzzy matches like `commander` → "Commander Ilya") gets the slot's marker. Tab- or click-targeting a saved unit outside the macro also applies its marker via `PLAYER_TARGET_CHANGED`, using a case-insensitive substring match so partial names like `commander` still match "Commander Ilya". Marker writes are deduped, so spamming the macro never causes flicker.
+The marker is applied whenever the macro acquires a target, and also when you tab- or click-target any saved NPC outside the macro (via `PLAYER_TARGET_CHANGED` with a case-insensitive substring match). Marker writes are deduped, so spamming the macro never causes flicker.
 
-Finder state is in-memory only and resets on `/reload` or logout. The **FIND** macro itself is saved by Blizzard and keeps working across sessions, but click/tab auto-marking won't fire again until you re-run `/find`.
+## Slash commands
+
+- `/tf` — toggle the panel.
+- `/tf NAME` — replace the list with just `NAME` (slot 1, skull marker).
+- `/tf clear` — empty the list.
+
+Everything else lives in the UI.
+
+## Saved data
+
+Per-character: your tracked NPC list. Account-wide: the minimap icon position. Both persist across reloads and logins.

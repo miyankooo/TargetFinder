@@ -1,0 +1,15 @@
+## Interface: 11570
+## Title: TargetFinder
+## Notes: Build a list of named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search via Questie (optional). WoW Classic 1.15.x.
+## Author: MIYANKO
+## Version: 3.0.0
+## IconTexture: 132177
+## OptionalDeps: Questie
+## SavedVariables: TargetFinderDB
+## SavedVariablesPerCharacter: TargetFinderCharDB
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+TargetFinder.lua
