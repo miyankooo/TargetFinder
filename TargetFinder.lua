@@ -797,11 +797,96 @@ local function submitInput(input)
     hideSuggestions(input)
 end
 
+-- Panel chrome (shared visual style across the addon's panels).
+local PANEL_PAD = 14
+local PANEL_PAD_TOP = 52       -- clears the dialog-box-header banner above the first section.
+local PANEL_PAD_BOTTOM = 14
+local SECTION_GAP = 22
+local SECTION_INNER_PAD = 12
+local SECTION_LABEL_LIFT = 7
+
+-- Native Blizzard dialog-frame backdrop (matches AceGUI Frame, which is what
+-- Questie's options panel uses). DialogBox-Border has the metallic look with
+-- decorative corners; DialogBox-Background is the standard tan parchment.
+local function applyPanelBackdrop(frame)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true,
+        tileSize = 32,
+        edgeSize = 32,
+        insets = { left = 8, right = 8, top = 8, bottom = 8 },
+    })
+end
+
+-- Native Blizzard dialog-box header banner (Interface\DialogFrame\UI-DialogBox-Header)
+-- composed as three texture pieces (left cap, repeating middle, right cap),
+-- centered at the parent's top edge and overlapping into the frame interior.
+-- Same texture coords AceGUI uses for its Frame title.
+local function buildTitleHeader(parent, text)
+    local HEADER_TEXTURE = "Interface\\DialogFrame\\UI-DialogBox-Header"
+
+    local mid = parent:CreateTexture(nil, "OVERLAY")
+    mid:SetTexture(HEADER_TEXTURE)
+    mid:SetTexCoord(0.31, 0.67, 0, 0.63)
+    mid:SetPoint("TOP", parent, "TOP", 0, 12)
+    mid:SetHeight(40)
+
+    local left = parent:CreateTexture(nil, "OVERLAY")
+    left:SetTexture(HEADER_TEXTURE)
+    left:SetTexCoord(0.21, 0.31, 0, 0.63)
+    left:SetPoint("RIGHT", mid, "LEFT")
+    left:SetWidth(30)
+    left:SetHeight(40)
+
+    local right = parent:CreateTexture(nil, "OVERLAY")
+    right:SetTexture(HEADER_TEXTURE)
+    right:SetTexCoord(0.67, 0.77, 0, 0.63)
+    right:SetPoint("LEFT", mid, "RIGHT")
+    right:SetWidth(30)
+    right:SetHeight(40)
+
+    local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOP", mid, "TOP", 0, -14)
+    title:SetText(text)
+
+    mid:SetWidth((title:GetStringWidth() or 0) + 10)
+
+    return mid
+end
+
+-- Nested section box (matches AceGUI InlineGroup): flat dark bg + tooltip border.
+local function buildSection(parent, labelText)
+    local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    section:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 16,
+        insets = { left = 3, right = 3, top = 5, bottom = 3 },
+    })
+    section:SetBackdropColor(0.1, 0.1, 0.1, 0.5)
+    section:SetBackdropBorderColor(0.4, 0.4, 0.4)
+
+    local label = section:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("BOTTOMLEFT", section, "TOPLEFT", 12, SECTION_LABEL_LIFT)
+    label:SetText(labelText)
+    section.label = label
+
+    local body = CreateFrame("Frame", nil, section)
+    body:SetPoint("TOPLEFT", section, "TOPLEFT", SECTION_INNER_PAD, -SECTION_INNER_PAD)
+    body:SetPoint("BOTTOMRIGHT", section, "BOTTOMRIGHT", -SECTION_INNER_PAD, SECTION_INNER_PAD)
+    section.body = body
+
+    return section
+end
+
 local function buildPanel()
     if panel then return panel end
 
-    panel = CreateFrame("Frame", "TargetFinderPanel", UIParent, "BasicFrameTemplateWithInset")
-    panel:SetSize(280, 370)
+    panel = CreateFrame("Frame", "TargetFinderPanel", UIParent, "BackdropTemplate")
+    panel:SetSize(300, 1)
     panel:SetPoint("CENTER")
     panel:SetFrameStrata("DIALOG")
     panel:SetClampedToScreen(true)
@@ -812,27 +897,29 @@ local function buildPanel()
     panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
     panel:SetScript("OnShow", function() refreshPanel() end)
     panel:Hide()
-    panel.TitleText:SetText(ADDON_NAME)
+    applyPanelBackdrop(panel)
     tinsert(UISpecialFrames, "TargetFinderPanel")
 
-    local header = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    header:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -32)
-    header:SetText("Tracked targets")
+    buildTitleHeader(panel, ADDON_NAME)
 
-    local cap = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    cap:SetPoint("LEFT", header, "RIGHT", 6, 0)
-    cap:SetText("(max " .. MAX_TARGETS .. ")")
+    local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
+
+    local tracked = buildSection(panel, "Tracked Targets (max " .. MAX_TARGETS .. ")")
+    tracked:SetPoint("TOPLEFT", panel, "TOPLEFT", PANEL_PAD, -PANEL_PAD_TOP)
+    tracked:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PANEL_PAD, -PANEL_PAD_TOP)
 
     panel.rows = {}
+    local lastRow
     for slot = 1, MAX_TARGETS do
-        local row = CreateFrame("Frame", nil, panel)
+        local row = CreateFrame("Frame", nil, tracked.body)
         row:SetHeight(22)
         if slot == 1 then
-            row:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
-            row:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -14, -58)
+            row:SetPoint("TOPLEFT", tracked.body, "TOPLEFT", 0, 0)
+            row:SetPoint("TOPRIGHT", tracked.body, "TOPRIGHT", 0, 0)
         else
-            row:SetPoint("TOPLEFT", panel.rows[slot - 1], "BOTTOMLEFT", 0, -2)
-            row:SetPoint("TOPRIGHT", panel.rows[slot - 1], "BOTTOMRIGHT", 0, -2)
+            row:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -2)
+            row:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -2)
         end
 
         local index = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -860,22 +947,27 @@ local function buildPanel()
         row.remove = remove
 
         panel.rows[slot] = row
+        lastRow = row
     end
 
-    local nearbyButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local nearbyButton = CreateFrame("Button", nil, tracked.body, "UIPanelButtonTemplate")
     nearbyButton:SetHeight(22)
-    nearbyButton:SetPoint("TOPLEFT", panel.rows[MAX_TARGETS], "BOTTOMLEFT", 6, -8)
-    nearbyButton:SetPoint("TOPRIGHT", panel.rows[MAX_TARGETS], "BOTTOMRIGHT", -6, -8)
+    nearbyButton:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -10)
+    nearbyButton:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -10)
     nearbyButton:SetText("Add Nearby Quest NPCs")
     nearbyButton:SetScript("OnClick", function() addNearbyQuestNpcs() end)
 
-    local addLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    addLabel:SetPoint("TOPLEFT", nearbyButton, "BOTTOMLEFT", -6, -10)
-    addLabel:SetText("Add target:")
+    local rowsHeight = MAX_TARGETS * 22 + (MAX_TARGETS - 1) * 2
+    local trackedBody = rowsHeight + 10 + 22
+    tracked:SetHeight(trackedBody + SECTION_INNER_PAD * 2)
 
-    local input = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    local addSection = buildSection(panel, "Add Target")
+    addSection:SetPoint("TOPLEFT", tracked, "BOTTOMLEFT", 0, -SECTION_GAP)
+    addSection:SetPoint("TOPRIGHT", tracked, "BOTTOMRIGHT", 0, -SECTION_GAP)
+
+    local input = CreateFrame("EditBox", nil, addSection.body, "InputBoxTemplate")
     input:SetSize(170, 20)
-    input:SetPoint("TOPLEFT", addLabel, "BOTTOMLEFT", 6, -6)
+    input:SetPoint("TOPLEFT", addSection.body, "TOPLEFT", 6, 0)
     input:SetAutoFocus(false)
     input:SetMaxLetters(40)
     input:SetScript("OnEnterPressed", function(self) submitInput(self) end)
@@ -886,23 +978,30 @@ local function buildPanel()
     end)
     attachAutocomplete(input)
 
-    local addButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local addButton = CreateFrame("Button", nil, addSection.body, "UIPanelButtonTemplate")
     addButton:SetSize(60, 22)
     addButton:SetPoint("LEFT", input, "RIGHT", 10, 0)
     addButton:SetText("Add")
     addButton:SetScript("OnClick", function() submitInput(input) end)
 
-    local clearButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local hint = addSection.body:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", input, "BOTTOMLEFT", -6, -10)
+    hint:SetPoint("RIGHT", addSection.body, "RIGHT", 0, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetWordWrap(true)
+    hint:SetText("Type an NPC or quest name to search, or leave empty for current target.")
+
+    local clearButton = CreateFrame("Button", nil, addSection.body, "UIPanelButtonTemplate")
     clearButton:SetSize(80, 22)
-    clearButton:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -14, 14)
+    clearButton:SetPoint("BOTTOMRIGHT", addSection.body, "BOTTOMRIGHT", 0, 0)
     clearButton:SetText("Clear")
     clearButton:SetScript("OnClick", clearFinder)
 
-    local hint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    hint:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 14, 20)
-    hint:SetPoint("RIGHT", clearButton, "LEFT", -8, 0)
-    hint:SetJustifyH("LEFT")
-    hint:SetText("Type an NPC or quest name to search, or leave empty for current target.")
+    -- Input row (22) + gap (10) + hint (~28, wraps to 2 lines) + gap (10) + clear button (22).
+    local addBody = 22 + 10 + 28 + 10 + 22
+    addSection:SetHeight(addBody + SECTION_INNER_PAD * 2)
+
+    panel:SetHeight(PANEL_PAD_TOP + tracked:GetHeight() + SECTION_GAP + addSection:GetHeight() + PANEL_PAD_BOTTOM)
 
     return panel
 end
