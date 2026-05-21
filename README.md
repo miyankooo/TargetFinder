@@ -4,7 +4,19 @@ Build a list of up to eight named NPCs and press one macro to target and auto-ma
 
 ## How it works
 
-TargetFinder maintains a single **FIND** macro that runs `/cleartarget` followed by a `/target NAME` line for each entry in your tracked list. The first name whose unit is in range becomes your target, and the addon automatically applies that slot's raid marker via `PLAYER_TARGET_CHANGED`. Spam the macro to cycle through your tracked NPCs as they come within range.
+TargetFinder maintains a single **FIND** macro shaped like:
+
+```
+/run TF_Cycle()
+/stopmacro [nodead]
+/target NAME1
+…
+/target NAME8
+```
+
+Pressing the macro fires `TF_Cycle()` once, which scans visible nameplates and prefers a **living** match — for kill/drop slots, also **attackable** and **not tapped by another player**. Slots are checked in priority order (slot 1 first), so the highest-priority living candidate wins. If `TF_Cycle` finds one, `/stopmacro [nodead]` ends the macro there. Otherwise the `/target` chain runs as today and grabs whoever's in range (also the in-combat path — `TF_Cycle` is a no-op in combat because Blizzard protects targeting from `/run`).
+
+Either way the addon applies the slot's raid marker via `PLAYER_TARGET_CHANGED`. Spam the macro to cycle through your tracked NPCs as they come within range.
 
 After you first add something, open the macro book (`/m`) and drag **FIND** onto your action bar.
 
@@ -35,7 +47,24 @@ The **Add All** footer button in the popup adds every visible suggestion, expand
 ## Minimap icon
 
 - **Left-click** — toggle the panel.
-- **Right-click** — refresh the list with nearby quest NPCs (same as the panel button). Requires Questie.
+- **Right-click** — refill the list with nearby quest NPCs (same as the panel button). Requires Questie.
+
+### Right-click selection rule
+
+Candidates are gathered from your current quest log:
+
+- **Active (incomplete) quests** contribute kill targets (`monster`/`killcredit` objectives) and item-drop NPCs (`npcDrops` for `item` objectives).
+- **Completed quests** contribute their `finishedBy` turn-in NPCs.
+- `startedBy` NPCs and `finishedBy` NPCs on incomplete quests are skipped — they aren't actionable.
+
+Candidates are then narrowed by distance and ordered by priority:
+
+1. Sort the whole candidate pool by distance ascending; take the closest 8.
+2. Within those 8, sort by priority: **Kill → Drop → Turn-in**, with distance as the tiebreaker.
+
+Result: in the field, the list fills with kill/drop mobs; in a city standing on top of turn-in NPCs, the list fills with quest givers. Either way, the macro cycles the highest-priority slot first.
+
+If nothing nearby qualifies, you'll see `Nothing to track here yet.`
 
 ## Right-click unit-frame menu
 

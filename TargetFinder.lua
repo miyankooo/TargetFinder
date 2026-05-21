@@ -15,6 +15,10 @@ local MARK_THROTTLE = 0.15
 local MINIMAP_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
 local MINIMAP_DEFAULT_POS = 215
 
+local KIND_KILL = 1
+local KIND_DROP = 2
+local KIND_GIVER = 3
+
 local function announce(msg)
     print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. COLOR_END .. " " .. msg)
 end
@@ -33,10 +37,11 @@ local function resolveName(input)
     return nil
 end
 
+-- Each slot holds { name = string, kind = KIND_* }. Manual adds default to KIND_GIVER.
 local findTargets = {}
 
-local function readTargets()
-    return findTargets
+local function makeEntry(name, kind)
+    return { name = name, kind = kind or KIND_GIVER }
 end
 
 local lastMarkTime = 0
@@ -57,8 +62,8 @@ local function applyMarkerFromTarget()
     local name = UnitName("target")
     if not name then return end
     local lowered = name:lower()
-    for slot, saved in ipairs(findTargets) do
-        if saved and lowered:find(saved:lower(), 1, true) then
+    for slot, entry in ipairs(findTargets) do
+        if lowered:find(entry.name:lower(), 1, true) then
             applySlotMarker(slot)
             return
         end
@@ -74,15 +79,27 @@ local function setMacro(name, icon, body)
     end
 end
 
--- Classic Era macros cap at 255 chars; keep the body lean and let
--- PLAYER_TARGET_CHANGED -> applyMarkerFromTarget apply the slot marker.
+-- Macro body mirrors RXPGuides: one /target per slot, in REVERSE so slot 1 lands
+-- on the last line and wins. /target is a no-op on no match, so spamming the
+-- macro never clears the current target. /targetlasttarget [dead] swaps back to
+-- the previous target when the current one dies. On overflow (Classic Era's
+-- 255-char macro cap), the lowest-priority lines drop off the top.
+local MACRO_LIMIT = 255
+local LAST_TARGET_LINE = "/targetlasttarget [dead]"
+
 local function buildFindBody(targets)
     if #targets == 0 then return "/cleartarget" end
-    local lines = { "/cleartarget" }
-    for _, name in ipairs(targets) do
-        lines[#lines + 1] = "/target " .. name
+    local lines = {}
+    for i = #targets, 1, -1 do
+        lines[#lines + 1] = "/target " .. targets[i].name
     end
-    return table.concat(lines, "\n")
+    lines[#lines + 1] = LAST_TARGET_LINE
+    local body = table.concat(lines, "\n")
+    while #body > MACRO_LIMIT and #lines > 1 do
+        table.remove(lines, 1)
+        body = table.concat(lines, "\n")
+    end
+    return body
 end
 
 local refreshPanel
@@ -171,9 +188,9 @@ local function hintMacro(name)
 end
 
 local function markNearbyForSlot(slot)
-    local pattern = findTargets[slot]
-    if not pattern then return 0 end
-    local lower = pattern:lower()
+    local entry = findTargets[slot]
+    if not entry or not entry.name then return 0 end
+    local lower = entry.name:lower()
     local marker = FIND_MARKERS[slot]
     local count = 0
     for i = 1, 40 do
@@ -189,12 +206,18 @@ local function markNearbyForSlot(slot)
     return count
 end
 
-local function setFinder(name)
+local function entryNames(entries)
+    local out = {}
+    for i, entry in ipairs(entries) do out[i] = entry.name end
+    return out
+end
+
+local function setFinder(name, kind)
     if not name then
         announce("No target selected.")
         return
     end
-    writeFinderMacro({ name })
+    writeFinderMacro({ makeEntry(name, kind) })
     applySlotMarker(1)
     local count = markNearbyForSlot(1)
     local suffix = count > 0 and " — " .. count .. " marked" or ""
@@ -202,46 +225,47 @@ local function setFinder(name)
     hintMacro(FIND_MACRO)
 end
 
-local function addFinder(name)
+local function addFinder(name, kind)
     if not name then
         announce("No target selected.")
         return
     end
-    local targets = readTargets()
+    local targets = findTargets
     for _, existing in ipairs(targets) do
-        if existing == name then
+        if existing.name == name then
             announce(name .. " is already tracked.")
             return
         end
     end
     if #targets >= MAX_TARGETS then
-        announce("Finder is full: " .. table.concat(targets, ", ") .. ".")
+        announce("Finder is full: " .. table.concat(entryNames(targets), ", ") .. ".")
         return
     end
-    table.insert(targets, name)
+    table.insert(targets, makeEntry(name, kind))
     writeFinderMacro(targets)
     local slot = #targets
     applySlotMarker(slot)
     local count = markNearbyForSlot(slot)
     local suffix = count > 0 and " — " .. count .. " marked" or ""
-    announce(table.concat(targets, ", ") .. suffix)
+    announce(table.concat(entryNames(targets), ", ") .. suffix)
     hintMacro(FIND_MACRO)
 end
 
-local function addFinderBatch(names)
-    if type(names) ~= "table" or #names == 0 then
+local function addFinderBatch(items)
+    if type(items) ~= "table" or #items == 0 then
         announce("Nothing to add.")
         return
     end
-    local targets = readTargets()
+    local targets = findTargets
     local existing = {}
-    for _, t in ipairs(targets) do existing[t] = true end
+    for _, t in ipairs(targets) do existing[t.name] = true end
 
     local added = {}
-    for _, name in ipairs(names) do
+    for _, item in ipairs(items) do
         if #targets >= MAX_TARGETS then break end
+        local name, kind = item.name, item.kind
         if name and name ~= "" and not existing[name] then
-            table.insert(targets, name)
+            table.insert(targets, makeEntry(name, kind))
             existing[name] = true
             added[#added + 1] = name
         end
@@ -265,17 +289,15 @@ local function addFinderBatch(names)
 end
 
 local function removeFinder(slot)
-    local targets = readTargets()
-    local removed = targets[slot]
+    local removed = findTargets[slot]
     if not removed then return end
-    table.remove(targets, slot)
-    writeFinderMacro(targets)
-    announce("Removed: " .. removed)
+    table.remove(findTargets, slot)
+    writeFinderMacro(findTargets)
+    announce("Removed: " .. removed.name)
 end
 
 local function clearFinder()
-    local before = readTargets()
-    if #before == 0 then
+    if #findTargets == 0 then
         announce("Finder is empty.")
         return
     end
@@ -294,10 +316,6 @@ local QuestieDB
 local QuestiePlayer
 local npcNames
 local npcNamesLower
-
-local KIND_KILL = 1
-local KIND_DROP = 2
-local KIND_GIVER = 3
 
 local function loadQuestieDB()
     if QuestieDB then return true end
@@ -378,17 +396,7 @@ local function forEachNpcInQuest(questId, visit)
     end
 end
 
-local function forEachQuestRelatedNpc(visit)
-    if not QuestiePlayer or not QuestiePlayer.currentQuestlog then return end
-    for questId in pairs(QuestiePlayer.currentQuestlog) do
-        local questName = QuestieDB.QueryQuestSingle(questId, "name")
-        forEachNpcInQuest(questId, function(npcId, kind)
-            visit(npcId, questName, kind)
-        end)
-    end
-end
-
-local function getNpcNamesForQuest(questId)
+local function getQuestNpcs(questId)
     if not loadQuestieDB() then return {} end
     local seen = {}
     local entries = {}
@@ -408,29 +416,30 @@ local function getNpcNamesForQuest(questId)
         if a.kind ~= b.kind then return a.kind < b.kind end
         return a.order < b.order
     end)
-    local names = {}
-    for i, e in ipairs(entries) do names[i] = e.name end
-    return names
+    return entries
 end
 
 local function collectQuestNpcNames()
     if not QuestiePlayer or not QuestiePlayer.currentQuestlog then return nil end
     local seen = {}
     local names = {}
-    forEachQuestRelatedNpc(function(npcId, questName, kind)
-        if not npcId then return end
-        local name = QuestieDB.QueryNPCSingle(npcId, "name")
-        if not name or name == "" then return end
-        local existing = seen[name]
-        if not existing then
-            local entry = { name = name, quest = questName, kind = kind, order = #names + 1 }
-            seen[name] = entry
-            names[#names + 1] = entry
-        elseif kind < existing.kind then
-            existing.kind = kind
-            existing.quest = questName
-        end
-    end)
+    for questId in pairs(QuestiePlayer.currentQuestlog) do
+        local questName = QuestieDB.QueryQuestSingle(questId, "name")
+        forEachNpcInQuest(questId, function(npcId, kind)
+            if not npcId then return end
+            local name = QuestieDB.QueryNPCSingle(npcId, "name")
+            if not name or name == "" then return end
+            local existing = seen[name]
+            if not existing then
+                local entry = { name = name, questName = questName, kind = kind, order = #names + 1 }
+                seen[name] = entry
+                names[#names + 1] = entry
+            elseif kind < existing.kind then
+                existing.kind = kind
+                existing.questName = questName
+            end
+        end)
+    end
     table.sort(names, function(a, b)
         if a.kind ~= b.kind then return a.kind < b.kind end
         return a.order < b.order
@@ -460,7 +469,7 @@ local function collectNearbyQuestNpcs()
 
     local seen = {}
     local entries = {}
-    local function visit(npcId, questName, kind)
+    local function visit(npcId, kind)
         if not npcId then return end
         local name = QuestieDB.QueryNPCSingle(npcId, "name")
         if not name or name == "" then return end
@@ -482,35 +491,58 @@ local function collectNearbyQuestNpcs()
 
         local existing = seen[name]
         if not existing then
-            local entry = { name = name, quest = questName, dist = best, kind = kind }
-            seen[name] = entry
-            entries[#entries + 1] = entry
+            entries[#entries + 1] = { name = name, dist = best, kind = kind }
+            seen[name] = entries[#entries]
         else
-            if kind < existing.kind then
-                existing.kind = kind
-                existing.quest = questName
-            end
-            if best < existing.dist then
-                existing.dist = best
-            end
+            if kind < existing.kind then existing.kind = kind end
+            if best < existing.dist then existing.dist = best end
         end
     end
 
     for questId in pairs(QuestiePlayer.currentQuestlog) do
-        local status = QuestieDB.IsComplete and QuestieDB.IsComplete(questId)
-        if status ~= 1 then
-            local questName = QuestieDB.QueryQuestSingle(questId, "name")
-            forEachNpcInQuest(questId, function(npcId, kind)
-                visit(npcId, questName, kind)
-            end)
+        local complete = QuestieDB.IsComplete and QuestieDB.IsComplete(questId) == 1
+        if complete then
+            -- Turn-in givers only; quest is ready to hand in.
+            local finishedBy = QuestieDB.QueryQuestSingle(questId, "finishedBy")
+            if finishedBy and finishedBy[1] then
+                for _, id in ipairs(finishedBy[1]) do visit(id, KIND_GIVER) end
+            end
+        else
+            -- Active quest: kill targets and item droppers only.
+            -- startedBy is moot (already accepted); finishedBy isn't actionable yet.
+            local quest = QuestieDB.GetQuest and QuestieDB.GetQuest(questId)
+            local objectiveData = quest and quest.ObjectiveData
+            local liveObjs = C_QuestLog and C_QuestLog.GetQuestObjectives
+                and C_QuestLog.GetQuestObjectives(questId)
+            if objectiveData then
+                for index, data in ipairs(objectiveData) do
+                    local live = liveObjs and liveObjs[index]
+                    if not (live and live.finished) then
+                        if data.Type == "monster" and data.Id then
+                            visit(data.Id, KIND_KILL)
+                        elseif data.Type == "killcredit" and data.IdList then
+                            for _, id in ipairs(data.IdList) do visit(id, KIND_KILL) end
+                        elseif data.Type == "item" and data.Id then
+                            local droppers = QuestieDB.QueryItemSingle(data.Id, "npcDrops")
+                            if droppers then
+                                for _, dropperId in ipairs(droppers) do visit(dropperId, KIND_DROP) end
+                            end
+                        end
+                    end
+                end
+            end
         end
     end
 
-    table.sort(entries, function(a, b)
+    -- Closest 8 first, then sort that subset by priority (kind asc, distance tiebreak).
+    table.sort(entries, function(a, b) return a.dist < b.dist end)
+    local top = {}
+    for i = 1, math.min(#entries, MAX_TARGETS) do top[i] = entries[i] end
+    table.sort(top, function(a, b)
         if a.kind ~= b.kind then return a.kind < b.kind end
         return a.dist < b.dist
     end)
-    return entries
+    return top
 end
 
 local function findSuggestions(query)
@@ -537,7 +569,13 @@ local function findSuggestions(query)
         for i = 1, #questNpcs do
             local entry = questNpcs[i]
             if not picked[entry.name] and entry.name:lower():find(q, 1, true) then
-                results[#results + 1] = { type = "npc", name = entry.name, quest = entry.quest or true, kind = entry.kind }
+                results[#results + 1] = {
+                    type = "npc",
+                    name = entry.name,
+                    questName = entry.questName,
+                    isQuestNpc = true,
+                    kind = entry.kind,
+                }
                 picked[entry.name] = true
                 if #results >= MAX_SUGGESTIONS then return results end
             end
@@ -615,15 +653,15 @@ local function buildSuggestionPopup(input)
             local entry = row.entry
             if not entry then return end
             if entry.type == "quest" then
-                local names = getNpcNamesForQuest(entry.questId)
-                if not names or #names == 0 then
+                local picks = getQuestNpcs(entry.questId)
+                if not picks or #picks == 0 then
                     announce("No NPCs found for that quest.")
                     return
                 end
                 input:SetText("")
                 input:ClearFocus()
                 hideSuggestions(input)
-                addFinderBatch(names)
+                addFinderBatch(picks)
                 return
             end
             local picked = entry.name
@@ -679,11 +717,9 @@ local function showSuggestions(input, list)
             if entry.type == "quest" then
                 row.text:SetText("|cffffd200[Quest]|r " .. entry.name)
                 row.text:SetTextColor(1, 1, 1)
-            elseif type(entry.quest) == "string" then
-                row.text:SetText(entry.name .. " |cffaaaaaa(" .. entry.quest .. ")|r")
-                row.text:SetTextColor(1, 0.82, 0)
-            elseif entry.quest then
-                row.text:SetText(entry.name)
+            elseif entry.isQuestNpc then
+                local suffix = entry.questName and " |cffaaaaaa(" .. entry.questName .. ")|r" or ""
+                row.text:SetText(entry.name .. suffix)
                 row.text:SetTextColor(1, 0.82, 0)
             else
                 row.text:SetText(entry.name)
@@ -740,10 +776,10 @@ local function addAllFromSuggestions(input)
     end
     local picks = {}
     local seen = {}
-    local function queue(name)
+    local function queue(name, kind)
         if name and name ~= "" and not seen[name] then
             seen[name] = true
-            picks[#picks + 1] = name
+            picks[#picks + 1] = { name = name, kind = kind }
         end
     end
     for i = 1, MAX_SUGGESTIONS do
@@ -751,9 +787,11 @@ local function addAllFromSuggestions(input)
         if row:IsShown() and row.entry then
             local entry = row.entry
             if entry.type == "quest" then
-                for _, name in ipairs(getNpcNamesForQuest(entry.questId)) do queue(name) end
+                for _, qEntry in ipairs(getQuestNpcs(entry.questId)) do
+                    queue(qEntry.name, qEntry.kind)
+                end
             elseif entry.name then
-                queue(entry.name)
+                queue(entry.name, entry.kind)
             end
         end
     end
@@ -774,15 +812,11 @@ local function addNearbyQuestNpcs()
     end
     local entries = collectNearbyQuestNpcs()
     if not entries or #entries == 0 then
-        announce("No nearby quest NPCs found.")
+        announce("Nothing to track here yet.")
         return
     end
-    local picks = {}
-    for i = 1, math.min(#entries, MAX_TARGETS) do
-        picks[#picks + 1] = entries[i].name
-    end
     writeFinderMacro({})
-    addFinderBatch(picks)
+    addFinderBatch(entries)
 end
 
 local function submitInput(input)
@@ -797,17 +831,14 @@ local function submitInput(input)
     hideSuggestions(input)
 end
 
--- Panel chrome (shared visual style across the addon's panels).
 local PANEL_PAD = 14
-local PANEL_PAD_TOP = 52       -- clears the dialog-box-header banner above the first section.
+local PANEL_PAD_TOP = 52       -- clears the dialog-box-header banner
 local PANEL_PAD_BOTTOM = 14
 local SECTION_GAP = 22
 local SECTION_INNER_PAD = 12
 local SECTION_LABEL_LIFT = 7
 
--- Native Blizzard dialog-frame backdrop (matches AceGUI Frame, which is what
--- Questie's options panel uses). DialogBox-Border has the metallic look with
--- decorative corners; DialogBox-Background is the standard tan parchment.
+-- Matches AceGUI Frame (the look Questie's panel uses).
 local function applyPanelBackdrop(frame)
     frame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -819,10 +850,8 @@ local function applyPanelBackdrop(frame)
     })
 end
 
--- Native Blizzard dialog-box header banner (Interface\DialogFrame\UI-DialogBox-Header)
--- composed as three texture pieces (left cap, repeating middle, right cap),
--- centered at the parent's top edge and overlapping into the frame interior.
--- Same texture coords AceGUI uses for its Frame title.
+-- Dialog-box header banner reconstructed from three texture pieces (left cap,
+-- repeating middle, right cap). Same texCoords AceGUI uses for its Frame title.
 local function buildTitleHeader(parent, text)
     local HEADER_TEXTURE = "Interface\\DialogFrame\\UI-DialogBox-Header"
 
@@ -855,7 +884,7 @@ local function buildTitleHeader(parent, text)
     return mid
 end
 
--- Nested section box (matches AceGUI InlineGroup): flat dark bg + tooltip border.
+-- Matches AceGUI InlineGroup: flat dark bg + tooltip border with a label above.
 local function buildSection(parent, labelText)
     local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     section:SetBackdrop({
@@ -1008,12 +1037,11 @@ end
 
 refreshPanel = function()
     if not panel then return end
-    local targets = readTargets()
     for slot = 1, MAX_TARGETS do
         local row = panel.rows[slot]
-        local name = targets[slot]
-        if name then
-            row.name:SetText(name)
+        local entry = findTargets[slot]
+        if entry then
+            row.name:SetText(entry.name)
             row.name:SetTextColor(1, 1, 1)
             SetRaidTargetIconTexture(row.icon, FIND_MARKERS[slot])
             row.icon:Show()
@@ -1103,11 +1131,10 @@ local function appendMenu(_, root, context)
 
     root:CreateDivider()
     root:CreateTitle(ADDON_NAME)
-    local targets = readTargets()
     local lowered = name:lower()
     local matchedSlot
-    for slot, saved in ipairs(targets) do
-        if saved and lowered:find(saved:lower(), 1, true) then
+    for slot, entry in ipairs(findTargets) do
+        if lowered:find(entry.name:lower(), 1, true) then
             matchedSlot = slot
             break
         end
@@ -1119,7 +1146,7 @@ local function appendMenu(_, root, context)
         root:CreateButton("Set Target", function() C_Timer.After(0, function() setFinder(name) end) end)
         root:CreateButton("Add Target", function() C_Timer.After(0, function() addFinder(name) end) end)
     end
-    if #targets > 0 then
+    if #findTargets > 0 then
         root:CreateButton("Clear Targets", function() C_Timer.After(0, function() clearFinder() end) end)
     end
 end
