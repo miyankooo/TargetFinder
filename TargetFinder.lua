@@ -1,6 +1,6 @@
 local addonName = ...
 
-local ADDON_NAME = "TargetFinder"
+local ADDON_NAME = "Target Finder"
 local YELLOW = "|cffffff00"
 local COLOR_END = "|r"
 
@@ -37,11 +37,47 @@ local function resolveName(input)
     return nil
 end
 
--- Each slot holds { name = string, kind = KIND_* }. Manual adds default to KIND_GIVER.
+-- Sparse slot table indexed 1..MAX_TARGETS. nil means empty. Entry: { name, kind }.
 local findTargets = {}
 
 local function makeEntry(name, kind)
     return { name = name, kind = kind or KIND_GIVER }
+end
+
+local function targetCount()
+    local n = 0
+    for slot = 1, MAX_TARGETS do
+        if findTargets[slot] then n = n + 1 end
+    end
+    return n
+end
+
+local function firstEmptySlot()
+    for slot = 1, MAX_TARGETS do
+        if not findTargets[slot] then return slot end
+    end
+    return nil
+end
+
+local function findNameSlot(name)
+    if not name then return nil end
+    for slot = 1, MAX_TARGETS do
+        local entry = findTargets[slot]
+        if entry and entry.name == name then return slot end
+    end
+    return nil
+end
+
+local function entryNames()
+    local out = {}
+    for slot = 1, MAX_TARGETS do
+        if findTargets[slot] then out[#out + 1] = findTargets[slot].name end
+    end
+    return out
+end
+
+local function wipeTargets()
+    for slot = 1, MAX_TARGETS do findTargets[slot] = nil end
 end
 
 local lastMarkTime = 0
@@ -62,8 +98,9 @@ local function applyMarkerFromTarget()
     local name = UnitName("target")
     if not name then return end
     local lowered = name:lower()
-    for slot, entry in ipairs(findTargets) do
-        if lowered:find(entry.name:lower(), 1, true) then
+    for slot = 1, MAX_TARGETS do
+        local entry = findTargets[slot]
+        if entry and lowered:find(entry.name:lower(), 1, true) then
             applySlotMarker(slot)
             return
         end
@@ -87,11 +124,15 @@ end
 local MACRO_LIMIT = 255
 local LAST_TARGET_LINE = "/targetlasttarget [dead]"
 
-local function buildFindBody(targets)
-    if #targets == 0 then return "/cleartarget" end
+local function buildFindBody()
+    local ordered = {}
+    for slot = 1, MAX_TARGETS do
+        if findTargets[slot] then ordered[#ordered + 1] = findTargets[slot] end
+    end
+    if #ordered == 0 then return "/cleartarget" end
     local lines = {}
-    for i = #targets, 1, -1 do
-        lines[#lines + 1] = "/target " .. targets[i].name
+    for i = #ordered, 1, -1 do
+        lines[#lines + 1] = "/target " .. ordered[i].name
     end
     lines[#lines + 1] = LAST_TARGET_LINE
     local body = table.concat(lines, "\n")
@@ -104,10 +145,9 @@ end
 
 local refreshPanel
 
-local function writeFinderMacro(targets)
-    findTargets = targets
-    if TargetFinderCharDB then TargetFinderCharDB.targets = targets end
-    setMacro(FIND_MACRO, FIND_ICON, buildFindBody(targets))
+local function writeFinderMacro()
+    if TargetFinderCharDB then TargetFinderCharDB.targets = findTargets end
+    setMacro(FIND_MACRO, FIND_ICON, buildFindBody())
     if refreshPanel then refreshPanel() end
 end
 
@@ -206,18 +246,14 @@ local function markNearbyForSlot(slot)
     return count
 end
 
-local function entryNames(entries)
-    local out = {}
-    for i, entry in ipairs(entries) do out[i] = entry.name end
-    return out
-end
-
 local function setFinder(name, kind)
     if not name then
         announce("No target selected.")
         return
     end
-    writeFinderMacro({ makeEntry(name, kind) })
+    wipeTargets()
+    findTargets[1] = makeEntry(name, kind)
+    writeFinderMacro()
     applySlotMarker(1)
     local count = markNearbyForSlot(1)
     local suffix = count > 0 and " — " .. count .. " marked" or ""
@@ -230,24 +266,21 @@ local function addFinder(name, kind)
         announce("No target selected.")
         return
     end
-    local targets = findTargets
-    for _, existing in ipairs(targets) do
-        if existing.name == name then
-            announce(name .. " is already tracked.")
-            return
-        end
-    end
-    if #targets >= MAX_TARGETS then
-        announce("Finder is full: " .. table.concat(entryNames(targets), ", ") .. ".")
+    if findNameSlot(name) then
+        announce(name .. " is already tracked.")
         return
     end
-    table.insert(targets, makeEntry(name, kind))
-    writeFinderMacro(targets)
-    local slot = #targets
+    local slot = firstEmptySlot()
+    if not slot then
+        announce("Finder is full: " .. table.concat(entryNames(), ", ") .. ".")
+        return
+    end
+    findTargets[slot] = makeEntry(name, kind)
+    writeFinderMacro()
     applySlotMarker(slot)
     local count = markNearbyForSlot(slot)
     local suffix = count > 0 and " — " .. count .. " marked" or ""
-    announce(table.concat(entryNames(targets), ", ") .. suffix)
+    announce(table.concat(entryNames(), ", ") .. suffix)
     hintMacro(FIND_MACRO)
 end
 
@@ -256,18 +289,22 @@ local function addFinderBatch(items)
         announce("Nothing to add.")
         return
     end
-    local targets = findTargets
     local existing = {}
-    for _, t in ipairs(targets) do existing[t.name] = true end
+    for slot = 1, MAX_TARGETS do
+        if findTargets[slot] then existing[findTargets[slot].name] = true end
+    end
 
     local added = {}
+    local newSlots = {}
     for _, item in ipairs(items) do
-        if #targets >= MAX_TARGETS then break end
         local name, kind = item.name, item.kind
         if name and name ~= "" and not existing[name] then
-            table.insert(targets, makeEntry(name, kind))
+            local empty = firstEmptySlot()
+            if not empty then break end
+            findTargets[empty] = makeEntry(name, kind)
             existing[name] = true
             added[#added + 1] = name
+            newSlots[#newSlots + 1] = empty
         end
     end
 
@@ -276,10 +313,9 @@ local function addFinderBatch(items)
         return
     end
 
-    local firstNewSlot = #targets - #added + 1
-    writeFinderMacro(targets)
+    writeFinderMacro()
     local marked = 0
-    for slot = firstNewSlot, #targets do
+    for _, slot in ipairs(newSlots) do
         applySlotMarker(slot)
         marked = marked + markNearbyForSlot(slot)
     end
@@ -291,18 +327,43 @@ end
 local function removeFinder(slot)
     local removed = findTargets[slot]
     if not removed then return end
-    table.remove(findTargets, slot)
-    writeFinderMacro(findTargets)
+    findTargets[slot] = nil
+    writeFinderMacro()
     announce("Removed: " .. removed.name)
 end
 
 local function clearFinder()
-    if #findTargets == 0 then
+    if targetCount() == 0 then
         announce("Finder is empty.")
         return
     end
-    writeFinderMacro({})
+    wipeTargets()
+    writeFinderMacro()
     announce("Finder cleared.")
+end
+
+local applyRowInput
+
+local function setSlot(slot, name)
+    if not name or name == "" then return end
+    local existingSlot = findNameSlot(name)
+    if existingSlot == slot then return end
+    if existingSlot then
+        announce(name .. " is already tracked.")
+        return
+    end
+    local previous = findTargets[slot]
+    findTargets[slot] = makeEntry(name)
+    writeFinderMacro()
+    applySlotMarker(slot)
+    local count = markNearbyForSlot(slot)
+    local suffix = count > 0 and " — " .. count .. " marked" or ""
+    if previous then
+        announce("Replaced " .. previous.name .. " with " .. name .. suffix)
+    else
+        announce(name .. suffix)
+    end
+    hintMacro(FIND_MACRO)
 end
 
 local panel
@@ -609,11 +670,11 @@ end
 
 local function buildSuggestionPopup(input)
     if input.qtPopup then return input.qtPopup end
-    local parent = input:GetParent()
-    local pop = CreateFrame("Frame", nil, parent, "TooltipBorderedFrameTemplate")
+    local row = input:GetParent()
+    local pop = CreateFrame("Frame", nil, row, "TooltipBorderedFrameTemplate")
     pop:SetFrameStrata("FULLSCREEN_DIALOG")
-    pop:SetPoint("TOPLEFT", input, "BOTTOMLEFT", -6, -4)
-    pop:SetWidth(parent:GetWidth() - 28)
+    pop:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -2)
+    pop:SetPoint("TOPRIGHT", row, "BOTTOMRIGHT", 0, -2)
     pop:Hide()
 
     pop.rows = {}
@@ -658,7 +719,7 @@ local function buildSuggestionPopup(input)
                     announce("No NPCs found for that quest.")
                     return
                 end
-                input:SetText("")
+                input:SetText(input.qtStored or "")
                 input:ClearFocus()
                 hideSuggestions(input)
                 addFinderBatch(picks)
@@ -667,9 +728,10 @@ local function buildSuggestionPopup(input)
             local picked = entry.name
             if not picked or picked == "" then return end
             input:SetText(picked)
-            input:SetCursorPosition(#picked)
-            pop:Hide()
-            input:SetFocus()
+            hideSuggestions(input)
+            if applyRowInput and input.slot then
+                applyRowInput(input.slot)
+            end
         end)
 
         pop.rows[i] = row
@@ -740,8 +802,9 @@ local function showSuggestions(input, list)
     pop:Show()
 end
 
-local function attachAutocomplete(input)
+local function attachAutocomplete(input, onChange)
     input:SetScript("OnTextChanged", function(self, userInput)
+        if onChange then onChange() end
         if not userInput then return end
         local typed = trim(self:GetText())
         if not typed or #typed < MIN_QUERY_LENGTH then
@@ -815,18 +878,38 @@ local function addNearbyQuestNpcs()
         announce("Nothing to track here yet.")
         return
     end
-    writeFinderMacro({})
+    wipeTargets()
     addFinderBatch(entries)
 end
 
-local function submitInput(input)
+applyRowInput = function(slot)
+    if not panel or not panel.rows then return end
+    local row = panel.rows[slot]
+    if not row then return end
+    local input = row.input
     local typed = trim(input:GetText())
-    if typed then
-        addFinder(typed)
-    else
-        addFinder(resolveName(nil))
+    local current = findTargets[slot]
+
+    if not typed then
+        if current then removeFinder(slot) end
+        input:ClearFocus()
+        hideSuggestions(input)
+        return
     end
-    input:SetText("")
+
+    local existingSlot = findNameSlot(typed)
+    if existingSlot then
+        if existingSlot ~= slot then
+            announce(typed .. " is already tracked.")
+            input:SetText(current and current.name or "")
+        end
+        input:ClearFocus()
+        hideSuggestions(input)
+        if row.updateState then row.updateState() end
+        return
+    end
+
+    setSlot(slot, typed)
     input:ClearFocus()
     hideSuggestions(input)
 end
@@ -911,11 +994,117 @@ local function buildSection(parent, labelText)
     return section
 end
 
+local ROW_HEIGHT = 22
+local ROW_GAP = 4
+local BUTTON_HEIGHT = 22
+local CLOSE_BUTTON_HEIGHT = 24
+
+local function buildSlotRow(parent, slot, anchorAbove)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(ROW_HEIGHT)
+    if anchorAbove then
+        row:SetPoint("TOPLEFT", anchorAbove, "BOTTOMLEFT", 0, -ROW_GAP)
+        row:SetPoint("TOPRIGHT", anchorAbove, "BOTTOMRIGHT", 0, -ROW_GAP)
+    else
+        row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
+    end
+
+    local index = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    index:SetPoint("LEFT", row, "LEFT", 2, 0)
+    index:SetWidth(18)
+    index:SetJustifyH("RIGHT")
+    index:SetText(slot .. ".")
+
+    local icon = row:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(18, 18)
+    icon:SetPoint("LEFT", index, "RIGHT", 4, 0)
+    row.icon = icon
+
+    local input = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+    input:SetHeight(20)
+    input:SetAutoFocus(false)
+    input:SetMaxLetters(40)
+    input.slot = slot
+    row.input = input
+
+    local addBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    addBtn:SetSize(64, BUTTON_HEIGHT)
+    addBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    addBtn:SetText("Add NPC")
+    addBtn:Hide()
+    row.addBtn = addBtn
+
+    local removeBtn = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+    removeBtn:SetSize(22, 22)
+    removeBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    removeBtn:Hide()
+    row.removeBtn = removeBtn
+
+    row.updateState = function()
+        local typed = trim(input:GetText())
+        local stored = findTargets[slot]
+        input.qtStored = stored and stored.name or nil
+
+        input:ClearAllPoints()
+        input:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+        input:SetHeight(20)
+
+        if not typed then
+            addBtn:Hide()
+            if stored then
+                removeBtn.targetSlot = slot
+                removeBtn:Show()
+                input:SetPoint("RIGHT", removeBtn, "LEFT", -2, 0)
+            else
+                removeBtn:Hide()
+                input:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            end
+            return
+        end
+
+        local matchSlot = findNameSlot(typed)
+        if matchSlot then
+            addBtn:Hide()
+            removeBtn.targetSlot = matchSlot
+            removeBtn:Show()
+            input:SetPoint("RIGHT", removeBtn, "LEFT", -2, 0)
+        else
+            removeBtn:Hide()
+            addBtn:Show()
+            input:SetPoint("RIGHT", addBtn, "LEFT", -4, 0)
+        end
+    end
+
+    removeBtn:SetScript("OnClick", function()
+        local s = removeBtn.targetSlot or slot
+        removeFinder(s)
+    end)
+
+    addBtn:SetScript("OnClick", function()
+        applyRowInput(slot)
+    end)
+
+    input:SetScript("OnEnterPressed", function() applyRowInput(slot) end)
+    input:SetScript("OnEscapePressed", function(self)
+        local stored = findTargets[slot]
+        self:SetText(stored and stored.name or "")
+        self:ClearFocus()
+        hideSuggestions(self)
+        row.updateState()
+    end)
+
+    attachAutocomplete(input, row.updateState)
+
+    row.updateState()
+    return row
+end
+
 local function buildPanel()
     if panel then return panel end
 
     panel = CreateFrame("Frame", "TargetFinderPanel", UIParent, "BackdropTemplate")
-    panel:SetSize(300, 1)
+    panel:SetSize(380, 1)
     panel:SetPoint("CENTER")
     panel:SetFrameStrata("DIALOG")
     panel:SetClampedToScreen(true)
@@ -931,8 +1120,8 @@ local function buildPanel()
 
     buildTitleHeader(panel, ADDON_NAME)
 
-    local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
+    local cornerClose = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+    cornerClose:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
 
     local tracked = buildSection(panel, "Tracked Targets (max " .. MAX_TARGETS .. ")")
     tracked:SetPoint("TOPLEFT", panel, "TOPLEFT", PANEL_PAD, -PANEL_PAD_TOP)
@@ -941,96 +1130,37 @@ local function buildPanel()
     panel.rows = {}
     local lastRow
     for slot = 1, MAX_TARGETS do
-        local row = CreateFrame("Frame", nil, tracked.body)
-        row:SetHeight(22)
-        if slot == 1 then
-            row:SetPoint("TOPLEFT", tracked.body, "TOPLEFT", 0, 0)
-            row:SetPoint("TOPRIGHT", tracked.body, "TOPRIGHT", 0, 0)
-        else
-            row:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -2)
-            row:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -2)
-        end
-
-        local index = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        index:SetPoint("LEFT", row, "LEFT", 2, 0)
-        index:SetWidth(18)
-        index:SetJustifyH("RIGHT")
-        index:SetText(slot .. ".")
-
-        local icon = row:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(18, 18)
-        icon:SetPoint("LEFT", index, "RIGHT", 4, 0)
-        row.icon = icon
-
-        local name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        name:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-        name:SetPoint("RIGHT", row, "RIGHT", -24, 0)
-        name:SetJustifyH("LEFT")
-        name:SetWordWrap(false)
-        row.name = name
-
-        local remove = CreateFrame("Button", nil, row, "UIPanelCloseButton")
-        remove:SetSize(22, 22)
-        remove:SetPoint("RIGHT", row, "RIGHT", 4, 0)
-        remove:SetScript("OnClick", function() removeFinder(slot) end)
-        row.remove = remove
-
+        local row = buildSlotRow(tracked.body, slot, lastRow)
         panel.rows[slot] = row
         lastRow = row
     end
 
     local nearbyButton = CreateFrame("Button", nil, tracked.body, "UIPanelButtonTemplate")
-    nearbyButton:SetHeight(22)
-    nearbyButton:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -10)
-    nearbyButton:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -10)
-    nearbyButton:SetText("Add Nearby Quest NPCs")
+    nearbyButton:SetHeight(BUTTON_HEIGHT)
+    nearbyButton:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -12)
+    nearbyButton:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -12)
+    nearbyButton:SetText("Add Nearby NPCs")
     nearbyButton:SetScript("OnClick", function() addNearbyQuestNpcs() end)
 
-    local rowsHeight = MAX_TARGETS * 22 + (MAX_TARGETS - 1) * 2
-    local trackedBody = rowsHeight + 10 + 22
-    tracked:SetHeight(trackedBody + SECTION_INNER_PAD * 2)
-
-    local addSection = buildSection(panel, "Add Target")
-    addSection:SetPoint("TOPLEFT", tracked, "BOTTOMLEFT", 0, -SECTION_GAP)
-    addSection:SetPoint("TOPRIGHT", tracked, "BOTTOMRIGHT", 0, -SECTION_GAP)
-
-    local input = CreateFrame("EditBox", nil, addSection.body, "InputBoxTemplate")
-    input:SetSize(170, 20)
-    input:SetPoint("TOPLEFT", addSection.body, "TOPLEFT", 6, 0)
-    input:SetAutoFocus(false)
-    input:SetMaxLetters(40)
-    input:SetScript("OnEnterPressed", function(self) submitInput(self) end)
-    input:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
-        self:ClearFocus()
-        hideSuggestions(self)
-    end)
-    attachAutocomplete(input)
-
-    local addButton = CreateFrame("Button", nil, addSection.body, "UIPanelButtonTemplate")
-    addButton:SetSize(60, 22)
-    addButton:SetPoint("LEFT", input, "RIGHT", 10, 0)
-    addButton:SetText("Add")
-    addButton:SetScript("OnClick", function() submitInput(input) end)
-
-    local hint = addSection.body:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    hint:SetPoint("TOPLEFT", input, "BOTTOMLEFT", -6, -10)
-    hint:SetPoint("RIGHT", addSection.body, "RIGHT", 0, 0)
-    hint:SetJustifyH("LEFT")
-    hint:SetWordWrap(true)
-    hint:SetText("Type an NPC or quest name to search, or leave empty for current target.")
-
-    local clearButton = CreateFrame("Button", nil, addSection.body, "UIPanelButtonTemplate")
-    clearButton:SetSize(80, 22)
-    clearButton:SetPoint("BOTTOMRIGHT", addSection.body, "BOTTOMRIGHT", 0, 0)
-    clearButton:SetText("Clear")
+    local clearButton = CreateFrame("Button", nil, tracked.body, "UIPanelButtonTemplate")
+    clearButton:SetHeight(BUTTON_HEIGHT)
+    clearButton:SetPoint("TOPLEFT", nearbyButton, "BOTTOMLEFT", 0, -ROW_GAP)
+    clearButton:SetPoint("TOPRIGHT", nearbyButton, "BOTTOMRIGHT", 0, -ROW_GAP)
+    clearButton:SetText("Clear List")
     clearButton:SetScript("OnClick", clearFinder)
 
-    -- Input row (22) + gap (10) + hint (~28, wraps to 2 lines) + gap (10) + clear button (22).
-    local addBody = 22 + 10 + 28 + 10 + 22
-    addSection:SetHeight(addBody + SECTION_INNER_PAD * 2)
+    local rowsHeight = MAX_TARGETS * ROW_HEIGHT + (MAX_TARGETS - 1) * ROW_GAP
+    local trackedBody = rowsHeight + 12 + BUTTON_HEIGHT + ROW_GAP + BUTTON_HEIGHT
+    tracked:SetHeight(trackedBody + SECTION_INNER_PAD * 2)
 
-    panel:SetHeight(PANEL_PAD_TOP + tracked:GetHeight() + SECTION_GAP + addSection:GetHeight() + PANEL_PAD_BOTTOM)
+    local closeButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    closeButton:SetHeight(CLOSE_BUTTON_HEIGHT)
+    closeButton:SetPoint("TOPLEFT", tracked, "BOTTOMLEFT", 0, -SECTION_GAP * 2)
+    closeButton:SetPoint("TOPRIGHT", tracked, "BOTTOMRIGHT", 0, -SECTION_GAP * 2)
+    closeButton:SetText("Close")
+    closeButton:SetScript("OnClick", function() panel:Hide() end)
+
+    panel:SetHeight(PANEL_PAD_TOP + tracked:GetHeight() + SECTION_GAP * 2 + CLOSE_BUTTON_HEIGHT + PANEL_PAD_BOTTOM)
 
     return panel
 end
@@ -1040,18 +1170,17 @@ refreshPanel = function()
     for slot = 1, MAX_TARGETS do
         local row = panel.rows[slot]
         local entry = findTargets[slot]
+        if not row.input:HasFocus() then
+            row.input:SetText(entry and entry.name or "")
+            row.input:SetCursorPosition(0)
+        end
         if entry then
-            row.name:SetText(entry.name)
-            row.name:SetTextColor(1, 1, 1)
             SetRaidTargetIconTexture(row.icon, FIND_MARKERS[slot])
             row.icon:Show()
-            row.remove:Show()
         else
-            row.name:SetText("—")
-            row.name:SetTextColor(0.5, 0.5, 0.5)
             row.icon:Hide()
-            row.remove:Hide()
         end
+        row.updateState()
     end
 end
 
@@ -1095,18 +1224,14 @@ local function setupMinimapButton()
     LDBIcon:Register(ADDON_NAME, dataObject, TargetFinderDB.minimap)
 end
 
-SLASH_TARGETFINDER_PANEL1 = "/tf"
-SlashCmdList.TARGETFINDER_PANEL = function(msg)
+SLASH_TARGETFINDER_FIND1 = "/find"
+SlashCmdList.TARGETFINDER_FIND = function(msg)
     local arg = trim(msg)
     if not arg then
-        togglePanel()
+        announce("Usage: /find NAME")
         return
     end
-    if arg:lower() == "clear" then
-        clearFinder()
-        return
-    end
-    setFinder(arg)
+    addFinder(arg)
 end
 
 local UNIT_MENU_TAGS = {
@@ -1130,11 +1255,12 @@ local function appendMenu(_, root, context)
     if not name or name == "" or name == UNKNOWN then return end
 
     root:CreateDivider()
-    root:CreateTitle(ADDON_NAME)
+    root:CreateTitle("Target Finder")
     local lowered = name:lower()
     local matchedSlot
-    for slot, entry in ipairs(findTargets) do
-        if lowered:find(entry.name:lower(), 1, true) then
+    for slot = 1, MAX_TARGETS do
+        local entry = findTargets[slot]
+        if entry and lowered:find(entry.name:lower(), 1, true) then
             matchedSlot = slot
             break
         end
@@ -1146,7 +1272,7 @@ local function appendMenu(_, root, context)
         root:CreateButton("Set Target", function() C_Timer.After(0, function() setFinder(name) end) end)
         root:CreateButton("Add Target", function() C_Timer.After(0, function() addFinder(name) end) end)
     end
-    if #findTargets > 0 then
+    if targetCount() > 0 then
         root:CreateButton("Clear Targets", function() C_Timer.After(0, function() clearFinder() end) end)
     end
 end
@@ -1173,8 +1299,8 @@ frame:SetScript("OnEvent", function(self, event, name)
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         setupMinimapButton()
-        if #findTargets > 0 then writeFinderMacro(findTargets) end
-        announce("Loaded. Type /tf to open the panel.")
+        if targetCount() > 0 then writeFinderMacro() end
+        announce("Loaded. Type /find NAME to add a target.")
         self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_TARGET_CHANGED" then
         applyMarkerFromTarget()

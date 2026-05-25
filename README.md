@@ -1,10 +1,10 @@
-# TargetFinder
+# Target Finder
 
 Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; works as a pure manual list when it isn't. WoW Classic 1.15.x.
 
 ## How it works
 
-TargetFinder maintains a single **FIND** macro shaped like:
+Target Finder maintains a single **FIND** macro shaped like:
 
 ```
 /run TF_Cycle()
@@ -22,7 +22,7 @@ After you first add something, open the macro book (`/m`) and drag **FIND** onto
 
 ## Panel
 
-`/tf` (or left-click the minimap icon) toggles a draggable panel showing all eight slots:
+Left-click the minimap icon to toggle a draggable panel showing all eight slots:
 
 - Each slot displays its assigned raid marker, the tracked NPC name, and a close button to remove it.
 - **Add Nearby Quest NPCs** — clears the list and refills it with quest-related NPCs from your current zone, sorted by actual distance to your character. Requires Questie.
@@ -92,9 +92,7 @@ The marker is applied whenever the macro acquires a target, and also when you ta
 
 ## Slash commands
 
-- `/tf` — toggle the panel.
-- `/tf NAME` — replace the list with just `NAME` (slot 1, skull marker).
-- `/tf clear` — empty the list.
+- `/find NAME` — add `NAME` to the tracked list.
 
 Everything else lives in the UI.
 
