@@ -15,9 +15,15 @@ local MARK_THROTTLE = 0.15
 local MINIMAP_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
 local MINIMAP_DEFAULT_POS = 215
 
+-- Priority order, ascending = higher priority:
+--   1 KILL  - mobs that count for a kill objective
+--   2 DROP  - mobs that drop a required quest item
+--   3 ASSOC - mobs otherwise referenced by the quest (talk/escort/etc.)
+--   4 GIVER - quest start / turn-in NPCs (lowest priority)
 local KIND_KILL = 1
 local KIND_DROP = 2
-local KIND_GIVER = 3
+local KIND_ASSOC = 3
+local KIND_GIVER = 4
 
 local function announce(msg)
     print(YELLOW .. "[" .. ADDON_NAME .. "]:" .. COLOR_END .. " " .. msg)
@@ -145,8 +151,37 @@ end
 
 local refreshPanel
 
+-- EditMacro / CreateMacro are blocked while the player is in combat. We mirror
+-- RXPGuides' targeting macro: write directly when out of combat, otherwise
+-- stash the body and replay it on PLAYER_REGEN_ENABLED. The on-screen red
+-- error fires once per combat session so chat stays clean.
+local pendingMacroBody
+local notifiedCombat = false
+local macroFrame = CreateFrame("Frame")
+macroFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+
+macroFrame:SetScript("OnEvent", function(_, event)
+    if event ~= "PLAYER_REGEN_ENABLED" or not pendingMacroBody then return end
+    local body = pendingMacroBody
+    pendingMacroBody = nil
+    notifiedCombat = false
+    setMacro(FIND_MACRO, FIND_ICON, body)
+    if refreshPanel then refreshPanel() end
+end)
+
 local function writeFinderMacro()
     if TargetFinderCharDB then TargetFinderCharDB.targets = findTargets end
+    if InCombatLockdown() then
+        pendingMacroBody = buildFindBody()
+        if not notifiedCombat then
+            notifiedCombat = true
+            if UIErrorsFrame then
+                UIErrorsFrame:AddMessage("Target Finder: leave combat to update the find macro.", 1.0, 0.1, 0.1)
+            end
+        end
+        if refreshPanel then refreshPanel() end
+        return
+    end
     setMacro(FIND_MACRO, FIND_ICON, buildFindBody())
     if refreshPanel then refreshPanel() end
 end
@@ -244,21 +279,6 @@ local function markNearbyForSlot(slot)
         end
     end
     return count
-end
-
-local function setFinder(name, kind)
-    if not name then
-        announce("No target selected.")
-        return
-    end
-    wipeTargets()
-    findTargets[1] = makeEntry(name, kind)
-    writeFinderMacro()
-    applySlotMarker(1)
-    local count = markNearbyForSlot(1)
-    local suffix = count > 0 and " — " .. count .. " marked" or ""
-    announce(name .. suffix)
-    hintMacro(FIND_MACRO)
 end
 
 local function addFinder(name, kind)
@@ -396,6 +416,7 @@ local function getQuestieKindIcons()
     questieKindIcons = {
         [KIND_KILL] = Q.usedIcons[Q.ICON_TYPE_SLAY],
         [KIND_DROP] = Q.usedIcons[Q.ICON_TYPE_LOOT],
+        [KIND_ASSOC] = Q.usedIcons[Q.ICON_TYPE_TALK],
         [KIND_GIVER] = Q.usedIcons[Q.ICON_TYPE_AVAILABLE],
     }
     return questieKindIcons
@@ -524,9 +545,28 @@ end
 
 local function collectNearbyQuestNpcs()
     if not loadQuestieDB() then return nil end
-    local areaId, px, py = getPlayerAreaAndCoords()
-    if not areaId then return nil end
     if not QuestiePlayer or not QuestiePlayer.currentQuestlog then return nil end
+
+    local areaId, px, py = getPlayerAreaAndCoords()
+    local parentAreaId
+    if areaId then
+        local loader = _G.QuestieLoader
+        local ZoneDB = loader and loader:ImportModule("ZoneDB")
+        if ZoneDB and ZoneDB.GetParentZoneId then
+            parentAreaId = ZoneDB:GetParentZoneId(areaId)
+        end
+    end
+
+    -- Snapshot nameplate names. Any quest NPC visible on a nameplate is
+    -- guaranteed close, even when zone/spawn data would otherwise reject it.
+    local onNameplate = {}
+    for i = 1, 40 do
+        local unit = "nameplate" .. i
+        if UnitExists(unit) and not UnitIsPlayer(unit) then
+            local n = UnitName(unit)
+            if n then onNameplate[n] = true end
+        end
+    end
 
     local seen = {}
     local entries = {}
@@ -534,30 +574,38 @@ local function collectNearbyQuestNpcs()
         if not npcId then return end
         local name = QuestieDB.QueryNPCSingle(npcId, "name")
         if not name or name == "" then return end
-        local spawns = QuestieDB.QueryNPCSingle(npcId, "spawns")
-        if not spawns then return end
-        local zoneSpawns = spawns[areaId]
-        if not zoneSpawns then return end
-
-        local best = math.huge
-        if px and py then
-            for _, coord in ipairs(zoneSpawns) do
-                local dx, dy = coord[1] - px, coord[2] - py
-                local d = dx * dx + dy * dy
-                if d < best then best = d end
-            end
-        else
-            best = 0
-        end
 
         local existing = seen[name]
-        if not existing then
-            entries[#entries + 1] = { name = name, dist = best, kind = kind }
-            seen[name] = entries[#entries]
-        else
+        if existing then
             if kind < existing.kind then existing.kind = kind end
-            if best < existing.dist then existing.dist = best end
+            return
         end
+
+        local dist
+        if onNameplate[name] then
+            dist = 0
+        elseif areaId then
+            local spawns = QuestieDB.QueryNPCSingle(npcId, "spawns")
+            if not spawns then return end
+            local zoneSpawns = spawns[areaId] or (parentAreaId and spawns[parentAreaId])
+            if not zoneSpawns then return end
+            dist = math.huge
+            if px and py then
+                for _, coord in ipairs(zoneSpawns) do
+                    local dx, dy = coord[1] - px, coord[2] - py
+                    local d = dx * dx + dy * dy
+                    if d < dist then dist = d end
+                end
+            else
+                dist = 0
+            end
+        else
+            return
+        end
+
+        local entry = { name = name, dist = dist, kind = kind }
+        entries[#entries + 1] = entry
+        seen[name] = entry
     end
 
     for questId in pairs(QuestiePlayer.currentQuestlog) do
@@ -1211,8 +1259,10 @@ local function setupMinimapButton()
         end,
         OnTooltipShow = function(tt)
             tt:AddLine(ADDON_NAME)
-            tt:AddLine("|cffffffffLeft-click|r to toggle the panel.", 1, 1, 1)
-            tt:AddLine("|cffffffffRight-click|r to add nearby quest NPCs.", 1, 1, 1)
+            tt:AddLine("|cffffd200Left-click|r to toggle the panel.", 1, 1, 1)
+            tt:AddLine("|cffffd200Right-click|r to add nearby quest NPCs.", 1, 1, 1)
+            tt:AddLine("|cffffd200/find <TARGET_NAME>|r adds a target.", 1, 1, 1)
+            tt:AddLine("|cffffd200/find clear|r empties the list.", 1, 1, 1)
         end,
     })
 
@@ -1228,7 +1278,11 @@ SLASH_TARGETFINDER_FIND1 = "/find"
 SlashCmdList.TARGETFINDER_FIND = function(msg)
     local arg = trim(msg)
     if not arg then
-        announce("Usage: /find NAME")
+        announce("Usage: /find <TARGET_NAME>  |  /find clear")
+        return
+    end
+    if arg:lower() == "clear" then
+        clearFinder()
         return
     end
     addFinder(arg)
@@ -1269,7 +1323,6 @@ local function appendMenu(_, root, context)
     if matchedSlot then
         root:CreateButton("Remove Target", function() C_Timer.After(0, function() removeFinder(matchedSlot) end) end)
     else
-        root:CreateButton("Set Target", function() C_Timer.After(0, function() setFinder(name) end) end)
         root:CreateButton("Add Target", function() C_Timer.After(0, function() addFinder(name) end) end)
     end
     if targetCount() > 0 then
@@ -1300,7 +1353,6 @@ frame:SetScript("OnEvent", function(self, event, name)
     elseif event == "PLAYER_LOGIN" then
         setupMinimapButton()
         if targetCount() > 0 then writeFinderMacro() end
-        announce("Loaded. Type /find NAME to add a target.")
         self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_TARGET_CHANGED" then
         applyMarkerFromTarget()
