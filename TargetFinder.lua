@@ -122,25 +122,26 @@ local function setMacro(name, icon, body)
     end
 end
 
--- Macro body mirrors RXPGuides: one /target per slot, in REVERSE so slot 1 lands
--- on the last line and wins. /target is a no-op on no match, so spamming the
--- macro never clears the current target. /targetlasttarget [dead] swaps back to
--- the previous target when the current one dies. On overflow (Classic Era's
--- 255-char macro cap), the lowest-priority lines drop off the top.
+-- Macro body modeled on RXPGuides: one /target per slot, in REVERSE so slot 1
+-- lands on the last line and wins. /target uses substring matching, so a partial
+-- name like "Auctioneer" still finds "Auctioneer Chillgular". It is a no-op on no
+-- match, so the macro never clears the current target and never grabs an off-list
+-- mob. On overflow (Classic Era's 255-char macro cap), the lowest-priority lines
+-- drop off the top.
 local MACRO_LIMIT = 255
-local LAST_TARGET_LINE = "/targetlasttarget [dead]"
 
 local function buildFindBody()
     local ordered = {}
     for slot = 1, MAX_TARGETS do
         if findTargets[slot] then ordered[#ordered + 1] = findTargets[slot] end
     end
-    if #ordered == 0 then return "/cleartarget" end
+    -- No tracked NPCs: a no-op comment macro (mirrors RXPGuides) so pressing FIND
+    -- leaves the current target alone instead of clearing it.
+    if #ordered == 0 then return "//" .. ADDON_NAME .. " - no targets" end
     local lines = {}
     for i = #ordered, 1, -1 do
         lines[#lines + 1] = "/target " .. ordered[i].name
     end
-    lines[#lines + 1] = LAST_TARGET_LINE
     local body = table.concat(lines, "\n")
     while #body > MACRO_LIMIT and #lines > 1 do
         table.remove(lines, 1)
