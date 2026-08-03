@@ -12,7 +12,7 @@ local ACTION_SLOTS = 72
 local GLOW_SECONDS = 4
 local MARK_THROTTLE = 0.15
 
-local MINIMAP_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
+local MINIMAP_ICON = "Interface\\Icons\\Ability_Hunter_MasterMarksman"
 local MINIMAP_DEFAULT_POS = 215
 
 -- Priority order, ascending = higher priority:
