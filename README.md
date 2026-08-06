@@ -48,6 +48,7 @@ The **Add All** footer button in the popup adds every visible suggestion, expand
 
 - **Left-click** — toggle the panel.
 - **Right-click** — refill the list with nearby quest NPCs (same as the panel button). Requires Questie.
+- **Middle-click** — clear the tracked list.
 
 ### Right-click selection rule
 

@@ -1256,14 +1256,16 @@ local function setupMinimapButton()
                 togglePanel()
             elseif button == "RightButton" then
                 addNearbyQuestNpcs()
+            elseif button == "MiddleButton" then
+                clearFinder()
             end
         end,
         OnTooltipShow = function(tt)
             tt:AddLine(ADDON_NAME)
             tt:AddLine("|cffffd200Left-click|r to toggle the panel.", 1, 1, 1)
             tt:AddLine("|cffffd200Right-click|r to add nearby quest NPCs.", 1, 1, 1)
-            tt:AddLine("|cffffd200/find <TARGET_NAME>|r adds a target.", 1, 1, 1)
-            tt:AddLine("|cffffd200/find clear|r empties the list.", 1, 1, 1)
+            tt:AddLine("|cffffd200Middle-click|r to clear the list.", 1, 1, 1)
+            tt:AddLine("|cffffd200/find Name|r adds Name to the list.", 1, 1, 1)
         end,
     })
 
@@ -1279,11 +1281,7 @@ SLASH_TARGETFINDER_FIND1 = "/find"
 SlashCmdList.TARGETFINDER_FIND = function(msg)
     local arg = trim(msg)
     if not arg then
-        announce("Usage: /find <TARGET_NAME>  |  /find clear")
-        return
-    end
-    if arg:lower() == "clear" then
-        clearFinder()
+        announce("Usage: /find Name")
         return
     end
     addFinder(arg)
