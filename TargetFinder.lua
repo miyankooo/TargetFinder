@@ -6,6 +6,8 @@ local COLOR_END = "|r"
 
 local FIND_MACRO = "FIND"
 local FIND_ICON = "Ability_Hunter_SniperShot"
+local ASSIST_MACRO = "ASSIST"
+local ASSIST_ICON = "Ability_DualWield"
 local FIND_MARKERS = { 8, 6, 2, 1, 7, 4, 3, 5 }
 local MAX_TARGETS = 8
 local ACTION_SLOTS = 72
@@ -34,13 +36,6 @@ local function trim(value)
     local stripped = value:match("^%s*(.-)%s*$")
     if stripped == "" then return nil end
     return stripped
-end
-
-local function resolveName(input)
-    local name = trim(input)
-    if name then return name end
-    if UnitExists("target") then return UnitName("target") end
-    return nil
 end
 
 -- Sparse slot table indexed 1..MAX_TARGETS. nil means empty. Entry: { name, kind }.
@@ -156,34 +151,42 @@ local refreshPanel
 -- RXPGuides' targeting macro: write directly when out of combat, otherwise
 -- stash the body and replay it on PLAYER_REGEN_ENABLED. The on-screen red
 -- error fires once per combat session so chat stays clean.
-local pendingMacroBody
+local pendingMacros = {}
 local notifiedCombat = false
 local macroFrame = CreateFrame("Frame")
 macroFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 macroFrame:SetScript("OnEvent", function(_, event)
-    if event ~= "PLAYER_REGEN_ENABLED" or not pendingMacroBody then return end
-    local body = pendingMacroBody
-    pendingMacroBody = nil
+    if event ~= "PLAYER_REGEN_ENABLED" then return end
     notifiedCombat = false
-    setMacro(FIND_MACRO, FIND_ICON, body)
+    if next(pendingMacros) == nil then return end
+    local queued = pendingMacros
+    pendingMacros = {}
+    for name, macro in pairs(queued) do
+        setMacro(name, macro.icon, macro.body)
+    end
     if refreshPanel then refreshPanel() end
 end)
 
+-- Returns true when the macro was written, false when combat deferred it.
+local function queueMacro(name, icon, body)
+    if not InCombatLockdown() then
+        setMacro(name, icon, body)
+        return true
+    end
+    pendingMacros[name] = { icon = icon, body = body }
+    if not notifiedCombat then
+        notifiedCombat = true
+        if UIErrorsFrame then
+            UIErrorsFrame:AddMessage("Target Finder: leave combat to update macros.", 1.0, 0.1, 0.1)
+        end
+    end
+    return false
+end
+
 local function writeFinderMacro()
     if TargetFinderCharDB then TargetFinderCharDB.targets = findTargets end
-    if InCombatLockdown() then
-        pendingMacroBody = buildFindBody()
-        if not notifiedCombat then
-            notifiedCombat = true
-            if UIErrorsFrame then
-                UIErrorsFrame:AddMessage("Target Finder: leave combat to update the find macro.", 1.0, 0.1, 0.1)
-            end
-        end
-        if refreshPanel then refreshPanel() end
-        return
-    end
-    setMacro(FIND_MACRO, FIND_ICON, buildFindBody())
+    queueMacro(FIND_MACRO, FIND_ICON, buildFindBody())
     if refreshPanel then refreshPanel() end
 end
 
@@ -261,6 +264,25 @@ local function hintMacro(name)
     else
         C_Timer.After(0, function() focusMacro(absIndex) end)
     end
+end
+
+local function setAssistTarget(name)
+    if not name or name == "" then return end
+    if not queueMacro(ASSIST_MACRO, ASSIST_ICON, "/assist " .. name) then return end
+    announce("Assisting " .. name .. ".")
+    hintMacro(ASSIST_MACRO)
+end
+
+-- Blizzard's own UnitPopupSharedUtil.IsInGroupWithPlayer passes a character name
+-- as the unit token, so the name fallback is safe when the menu gives no unit.
+-- A non-grouped name simply fails to resolve, which is the filter we want.
+local function canAssistUnit(unit, name)
+    local token = unit or name
+    if not token then return false end
+    if UnitIsUnit(token, "player") then return false end
+    if not UnitIsPlayer(token) then return false end
+    if not UnitIsFriend("player", token) then return false end
+    return UnitInParty(token) or UnitInRaid(token)
 end
 
 local function markNearbyForSlot(slot)
@@ -722,8 +744,8 @@ local function buildSuggestionPopup(input)
     local row = input:GetParent()
     local pop = CreateFrame("Frame", nil, row, "TooltipBorderedFrameTemplate")
     pop:SetFrameStrata("FULLSCREEN_DIALOG")
-    pop:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -2)
-    pop:SetPoint("TOPRIGHT", row, "BOTTOMRIGHT", 0, -2)
+    pop:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -4)
+    pop:SetPoint("TOPRIGHT", row, "BOTTOMRIGHT", 0, -4)
     pop:Hide()
 
     pop.rows = {}
@@ -731,8 +753,8 @@ local function buildSuggestionPopup(input)
         local row = CreateFrame("Button", nil, pop)
         row:SetHeight(SUGGESTION_ROW_HEIGHT)
         if i == 1 then
-            row:SetPoint("TOPLEFT", pop, "TOPLEFT", 6, -6)
-            row:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -6, -6)
+            row:SetPoint("TOPLEFT", pop, "TOPLEFT", 8, -8)
+            row:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -8, -8)
         else
             row:SetPoint("TOPLEFT", pop.rows[i - 1], "BOTTOMLEFT", 0, 0)
             row:SetPoint("TOPRIGHT", pop.rows[i - 1], "BOTTOMRIGHT", 0, 0)
@@ -844,10 +866,10 @@ local function showSuggestions(input, list)
     end
     local lastVisible = pop.rows[count]
     pop.footer:ClearAllPoints()
-    pop.footer:SetPoint("TOPLEFT", lastVisible, "BOTTOMLEFT", 0, -3)
-    pop.footer:SetPoint("TOPRIGHT", lastVisible, "BOTTOMRIGHT", 0, -3)
+    pop.footer:SetPoint("TOPLEFT", lastVisible, "BOTTOMLEFT", 0, -4)
+    pop.footer:SetPoint("TOPRIGHT", lastVisible, "BOTTOMRIGHT", 0, -4)
     pop.footer:Show()
-    pop:SetHeight(12 + count * SUGGESTION_ROW_HEIGHT + SUGGESTION_ROW_HEIGHT + 3)
+    pop:SetHeight(16 + count * SUGGESTION_ROW_HEIGHT + 4 + SUGGESTION_ROW_HEIGHT)
     pop:Show()
 end
 
@@ -963,12 +985,17 @@ applyRowInput = function(slot)
     hideSuggestions(input)
 end
 
-local PANEL_PAD = 14
-local PANEL_PAD_TOP = 52       -- clears the dialog-box-header banner
-local PANEL_PAD_BOTTOM = 14
-local SECTION_GAP = 22
-local SECTION_INNER_PAD = 12
-local SECTION_LABEL_LIFT = 7
+local PANEL_PAD = 16
+local PANEL_PAD_TOP = 48       -- clears the dialog-box-header banner
+local PANEL_PAD_BOTTOM = 16
+local SECTION_GAP = 16
+local TEXT_GAP = 4
+local HELPER_GAP = 8
+local BUTTON_GAP = 8
+local QUESTIE_HINT = "Requires Questie."
+local PANEL_HEADER = "Tracked Unit Names"
+local PANEL_HELP = "Track up to " .. MAX_TARGETS .. " units and find them fast with the FIND macro. "
+    .. "Add Nearby Quest Units fills the list from your active quests and requires Questie."
 
 -- Matches AceGUI Frame (the look Questie's panel uses).
 local function applyPanelBackdrop(frame)
@@ -1016,57 +1043,24 @@ local function buildTitleHeader(parent, text)
     return mid
 end
 
--- Matches AceGUI InlineGroup: flat dark bg + tooltip border with a label above.
-local function buildSection(parent, labelText)
-    local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    section:SetBackdrop({
-        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 16,
-        insets = { left = 3, right = 3, top = 5, bottom = 3 },
-    })
-    section:SetBackdropColor(0.1, 0.1, 0.1, 0.5)
-    section:SetBackdropBorderColor(0.4, 0.4, 0.4)
-
-    local label = section:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("BOTTOMLEFT", section, "TOPLEFT", 12, SECTION_LABEL_LIFT)
-    label:SetText(labelText)
-    section.label = label
-
-    local body = CreateFrame("Frame", nil, section)
-    body:SetPoint("TOPLEFT", section, "TOPLEFT", SECTION_INNER_PAD, -SECTION_INNER_PAD)
-    body:SetPoint("BOTTOMRIGHT", section, "BOTTOMRIGHT", -SECTION_INNER_PAD, SECTION_INNER_PAD)
-    section.body = body
-
-    return section
-end
-
 local ROW_HEIGHT = 22
 local ROW_GAP = 4
 local BUTTON_HEIGHT = 22
-local CLOSE_BUTTON_HEIGHT = 24
 
-local function buildSlotRow(parent, slot, anchorAbove)
+local function buildSlotRow(parent, slot, anchorAbove, gap)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(ROW_HEIGHT)
-    if anchorAbove then
-        row:SetPoint("TOPLEFT", anchorAbove, "BOTTOMLEFT", 0, -ROW_GAP)
-        row:SetPoint("TOPRIGHT", anchorAbove, "BOTTOMRIGHT", 0, -ROW_GAP)
-    else
-        row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
-    end
+    row:SetPoint("TOPLEFT", anchorAbove, "BOTTOMLEFT", 0, -(gap or ROW_GAP))
+    row:SetPoint("TOPRIGHT", anchorAbove, "BOTTOMRIGHT", 0, -(gap or ROW_GAP))
 
     local index = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    index:SetPoint("LEFT", row, "LEFT", 2, 0)
-    index:SetWidth(18)
+    index:SetPoint("LEFT", row, "LEFT", 0, 0)
+    index:SetWidth(16)
     index:SetJustifyH("RIGHT")
     index:SetText(slot .. ".")
 
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
+    icon:SetSize(16, 16)
     icon:SetPoint("LEFT", index, "RIGHT", 4, 0)
     row.icon = icon
 
@@ -1077,10 +1071,15 @@ local function buildSlotRow(parent, slot, anchorAbove)
     input.slot = slot
     row.input = input
 
-    local addBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    addBtn:SetSize(64, BUTTON_HEIGHT)
-    addBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
-    addBtn:SetText("Add NPC")
+    -- Plus twin of UIPanelCloseButton, texture pairing lifted from Blizzard's
+    -- own Blizzard_TableInspector.xml on the classic era branch.
+    local addBtn = CreateFrame("Button", nil, row)
+    addBtn:SetSize(22, 22)
+    addBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    addBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
+    addBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+    addBtn:SetDisabledTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Disabled")
+    addBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
     addBtn:Hide()
     row.addBtn = addBtn
 
@@ -1096,7 +1095,7 @@ local function buildSlotRow(parent, slot, anchorAbove)
         input.qtStored = stored and stored.name or nil
 
         input:ClearAllPoints()
-        input:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+        input:SetPoint("LEFT", icon, "RIGHT", 8, 0)
         input:SetHeight(20)
 
         if not typed then
@@ -1104,7 +1103,7 @@ local function buildSlotRow(parent, slot, anchorAbove)
             if stored then
                 removeBtn.targetSlot = slot
                 removeBtn:Show()
-                input:SetPoint("RIGHT", removeBtn, "LEFT", -2, 0)
+                input:SetPoint("RIGHT", removeBtn, "LEFT", -4, 0)
             else
                 removeBtn:Hide()
                 input:SetPoint("RIGHT", row, "RIGHT", -4, 0)
@@ -1117,7 +1116,7 @@ local function buildSlotRow(parent, slot, anchorAbove)
             addBtn:Hide()
             removeBtn.targetSlot = matchSlot
             removeBtn:Show()
-            input:SetPoint("RIGHT", removeBtn, "LEFT", -2, 0)
+            input:SetPoint("RIGHT", removeBtn, "LEFT", -4, 0)
         else
             removeBtn:Hide()
             addBtn:Show()
@@ -1170,52 +1169,66 @@ local function buildPanel()
     buildTitleHeader(panel, ADDON_NAME)
 
     local cornerClose = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-    cornerClose:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
+    cornerClose:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
 
-    local tracked = buildSection(panel, "Tracked Targets (max " .. MAX_TARGETS .. ")")
-    tracked:SetPoint("TOPLEFT", panel, "TOPLEFT", PANEL_PAD, -PANEL_PAD_TOP)
-    tracked:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PANEL_PAD, -PANEL_PAD_TOP)
+    local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    header:SetPoint("TOPLEFT", panel, "TOPLEFT", PANEL_PAD, -PANEL_PAD_TOP)
+    header:SetText(PANEL_HEADER)
+
+    local helper = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    helper:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -TEXT_GAP)
+    helper:SetPoint("RIGHT", panel, "RIGHT", -PANEL_PAD, 0)
+    helper:SetJustifyH("LEFT")
+    helper:SetWordWrap(true)
+    helper:SetText(PANEL_HELP)
 
     panel.rows = {}
-    local lastRow
+    local lastRow = helper
     for slot = 1, MAX_TARGETS do
-        local row = buildSlotRow(tracked.body, slot, lastRow)
+        local row = buildSlotRow(panel, slot, lastRow, slot == 1 and HELPER_GAP or ROW_GAP)
         panel.rows[slot] = row
         lastRow = row
     end
 
-    local nearbyButton = CreateFrame("Button", nil, tracked.body, "UIPanelButtonTemplate")
+    local nearbyButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     nearbyButton:SetHeight(BUTTON_HEIGHT)
-    nearbyButton:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -12)
-    nearbyButton:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -12)
-    nearbyButton:SetText("Add Nearby NPCs")
+    nearbyButton:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -SECTION_GAP)
+    nearbyButton:SetPoint("TOPRIGHT", lastRow, "BOTTOM", -BUTTON_GAP / 2, -SECTION_GAP)
+    nearbyButton:SetText("Add Nearby Quest Units")
     nearbyButton:SetScript("OnClick", function() addNearbyQuestNpcs() end)
 
-    local clearButton = CreateFrame("Button", nil, tracked.body, "UIPanelButtonTemplate")
+    -- Tooltips need motion scripts kept alive, disabled buttons swallow them by default.
+    nearbyButton:SetMotionScriptsWhileDisabled(true)
+    nearbyButton:SetScript("OnEnter", function(self)
+        if self:IsEnabled() then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(QUESTIE_HINT, 0.5, 0.5, 0.5)
+        GameTooltip:Show()
+    end)
+    nearbyButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    panel.nearbyButton = nearbyButton
+
+    local clearButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     clearButton:SetHeight(BUTTON_HEIGHT)
-    clearButton:SetPoint("TOPLEFT", nearbyButton, "BOTTOMLEFT", 0, -ROW_GAP)
-    clearButton:SetPoint("TOPRIGHT", nearbyButton, "BOTTOMRIGHT", 0, -ROW_GAP)
-    clearButton:SetText("Clear List")
+    clearButton:SetPoint("TOPLEFT", lastRow, "BOTTOM", BUTTON_GAP / 2, -SECTION_GAP)
+    clearButton:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, -SECTION_GAP)
+    clearButton:SetText("Clear Unit List")
     clearButton:SetScript("OnClick", clearFinder)
 
     local rowsHeight = MAX_TARGETS * ROW_HEIGHT + (MAX_TARGETS - 1) * ROW_GAP
-    local trackedBody = rowsHeight + 12 + BUTTON_HEIGHT + ROW_GAP + BUTTON_HEIGHT
-    tracked:SetHeight(trackedBody + SECTION_INNER_PAD * 2)
-
-    local closeButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    closeButton:SetHeight(CLOSE_BUTTON_HEIGHT)
-    closeButton:SetPoint("TOPLEFT", tracked, "BOTTOMLEFT", 0, -SECTION_GAP * 2)
-    closeButton:SetPoint("TOPRIGHT", tracked, "BOTTOMRIGHT", 0, -SECTION_GAP * 2)
-    closeButton:SetText("Close")
-    closeButton:SetScript("OnClick", function() panel:Hide() end)
-
-    panel:SetHeight(PANEL_PAD_TOP + tracked:GetHeight() + SECTION_GAP * 2 + CLOSE_BUTTON_HEIGHT + PANEL_PAD_BOTTOM)
+    local textHeight = math.ceil(header:GetStringHeight()) + TEXT_GAP
+        + math.ceil(helper:GetStringHeight())
+    panel:SetHeight(PANEL_PAD_TOP + textHeight + HELPER_GAP + rowsHeight
+        + SECTION_GAP + BUTTON_HEIGHT + PANEL_PAD_BOTTOM)
 
     return panel
 end
 
 refreshPanel = function()
     if not panel then return end
+    if panel.nearbyButton then
+        panel.nearbyButton:SetEnabled(loadQuestieDB())
+    end
     for slot = 1, MAX_TARGETS do
         local row = panel.rows[slot]
         local entry = findTargets[slot]
@@ -1253,19 +1266,25 @@ local function setupMinimapButton()
         icon = MINIMAP_ICON,
         OnClick = function(_, button)
             if button == "LeftButton" then
-                togglePanel()
+                if IsShiftKeyDown() then
+                    clearFinder()
+                else
+                    togglePanel()
+                end
             elseif button == "RightButton" then
                 addNearbyQuestNpcs()
-            elseif button == "MiddleButton" then
-                clearFinder()
             end
         end,
         OnTooltipShow = function(tt)
             tt:AddLine(ADDON_NAME)
             tt:AddLine("|cffffd200Left-click|r to toggle the panel.", 1, 1, 1)
-            tt:AddLine("|cffffd200Right-click|r to add nearby quest NPCs.", 1, 1, 1)
-            tt:AddLine("|cffffd200Middle-click|r to clear the list.", 1, 1, 1)
-            tt:AddLine("|cffffd200/find Name|r adds Name to the list.", 1, 1, 1)
+            tt:AddLine("|cffffd200Shift + left-click|r to clear the unit list.", 1, 1, 1)
+            if loadQuestieDB() then
+                tt:AddLine("|cffffd200Right-click|r to add nearby quest units.", 1, 1, 1)
+            else
+                tt:AddLine("Right-click to add nearby quest units.", 0.5, 0.5, 0.5)
+                tt:AddLine(QUESTIE_HINT, 0.5, 0.5, 0.5)
+            end
         end,
     })
 
@@ -1275,16 +1294,6 @@ local function setupMinimapButton()
     TargetFinderDB.minimap.angle = nil
 
     LDBIcon:Register(ADDON_NAME, dataObject, TargetFinderDB.minimap)
-end
-
-SLASH_TARGETFINDER_FIND1 = "/find"
-SlashCmdList.TARGETFINDER_FIND = function(msg)
-    local arg = trim(msg)
-    if not arg then
-        announce("Usage: /find Name")
-        return
-    end
-    addFinder(arg)
 end
 
 local UNIT_MENU_TAGS = {
@@ -1309,6 +1318,11 @@ local function appendMenu(_, root, context)
 
     root:CreateDivider()
     root:CreateTitle("Target Finder")
+
+    if canAssistUnit(context.unit, name) then
+        root:CreateButton("Assist", function() C_Timer.After(0, function() setAssistTarget(name) end) end)
+    end
+
     local lowered = name:lower()
     local matchedSlot
     for slot = 1, MAX_TARGETS do
