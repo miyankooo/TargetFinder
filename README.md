@@ -71,13 +71,25 @@ If nothing nearby qualifies, you'll see `Nothing to track here yet.`
 
 ## Right-click unit-frame menu
 
-Right-click any unit frame (target, party, raid, etc.) for:
+Right-click any unit frame (target, party, raid, etc.) for a single **Target Finder** submenu, appended after a divider. Everything lives one level down so the addon costs one row in an already-crowded menu:
 
 - **Assist** — shown only for friendly players in your party or raid. Writes an **ASSIST** macro containing `/assist NAME`, then opens the macro book and pulses the icon if that macro isn't on an action bar yet, exactly like the **FIND** macro. Drag it onto a bar once and press it to pick up whatever the current assist target is fighting.
-- **Set Target** — replace the list with this NPC.
-- **Add Target** — append this NPC.
-- **Remove Target** — shown only if this NPC is already tracked.
-- **Clear Targets** — shown only if the list isn't empty.
+- **Track First** — put this NPC at slot 1 for top priority, shifting everything else down. Hidden when it already holds slot 1. Adding a new name to a full list drops the slot-8 entry and names it in chat.
+- **Track** — append this NPC to the next empty slot. Hidden if it's already tracked.
+- **Untrack** — shown only if this NPC is already tracked.
+- **Clear Unit List** — shown only if the list isn't empty, behind its own divider so it isn't a neighbour-misclick away from **Untrack**. Same label as the panel button, for the same action.
+
+Names deliberately avoid the word *focus*: Blizzard's own **Set Focus** sits in the same menu and means something else entirely.
+
+### One entry, one set of actions
+
+The menu matches by substring, so tracking `Auctioneer` makes every `Auctioneer <something>` read as tracked. All three actions then operate on that one matched entry, never on a near-duplicate of it:
+
+- **Untrack** removes `Auctioneer`.
+- **Track First** moves `Auctioneer` to slot 1. It does not add `Auctioneer Chillgular` alongside it.
+- **Track** is hidden, because something already covers this NPC.
+
+To track the specific mob instead, untrack the broad name first, then track the specific one.
 
 Yourself, hostile players and NPCs never get the **Assist** entry. Group membership is tested with `UnitInParty` / `UnitInRaid` against the menu's unit token, falling back to the character name the way Blizzard's own `UnitPopupSharedUtil.IsInGroupWithPlayer` does.
 

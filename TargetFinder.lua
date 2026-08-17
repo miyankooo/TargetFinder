@@ -327,6 +327,56 @@ local function addFinder(name, kind)
     hintMacro(FIND_MACRO)
 end
 
+-- Insert at slot 1 so the macro's last /target line wins. Everything else shifts
+-- down one slot, and a full list drops its lowest-priority entry off the end.
+local function addFinderFocus(name, kind, existingSlot)
+    -- Callers that already matched a slot pass it in, so their looser substring
+    -- rule wins over the exact lookup and the matched entry moves instead of
+    -- gaining a near-duplicate beside it.
+    local promoted = existingSlot and findTargets[existingSlot]
+    if not promoted and not name then
+        announce("No target selected.")
+        return
+    end
+
+    local duplicate = existingSlot or findNameSlot(name)
+    if duplicate == 1 then
+        announce((promoted and promoted.name or name) .. " is already first.")
+        return
+    end
+
+    local kept = {}
+    for slot = 1, MAX_TARGETS do
+        local entry = findTargets[slot]
+        if entry and slot ~= duplicate then kept[#kept + 1] = entry end
+    end
+
+    wipeTargets()
+    findTargets[1] = promoted or makeEntry(name, kind)
+    for i = 1, math.min(#kept, MAX_TARGETS - 1) do
+        findTargets[i + 1] = kept[i]
+    end
+
+    -- Only set when a new name fills a full list, never when promoting in place.
+    local dropped = kept[MAX_TARGETS]
+
+    writeFinderMacro()
+    applySlotMarker(1)
+
+    -- Every slot moved, so each entry needs its new marker pushed to nameplates.
+    local marked = 0
+    for slot = 1, MAX_TARGETS do
+        if findTargets[slot] then marked = marked + markNearbyForSlot(slot) end
+    end
+
+    local suffix = marked > 0 and " — " .. marked .. " marked" or ""
+    announce(table.concat(entryNames(), ", ") .. suffix)
+    if dropped then
+        announce("List was full, dropped " .. dropped.name .. ".")
+    end
+    hintMacro(FIND_MACRO)
+end
+
 local function addFinderBatch(items)
     if type(items) ~= "table" or #items == 0 then
         announce("Nothing to add.")
@@ -1316,13 +1366,6 @@ local function appendMenu(_, root, context)
     end
     if not name or name == "" or name == UNKNOWN then return end
 
-    root:CreateDivider()
-    root:CreateTitle("Target Finder")
-
-    if canAssistUnit(context.unit, name) then
-        root:CreateButton("Assist", function() C_Timer.After(0, function() setAssistTarget(name) end) end)
-    end
-
     local lowered = name:lower()
     local matchedSlot
     for slot = 1, MAX_TARGETS do
@@ -1333,13 +1376,31 @@ local function appendMenu(_, root, context)
         end
     end
 
+    -- Omit the responder so the row opens a submenu instead of closing the menu.
+    root:CreateDivider()
+    local sub = root:CreateButton(ADDON_NAME)
+
+    -- Defer past the click so the menu tears down before the action runs.
+    local function action(label, fn)
+        sub:CreateButton(label, function() C_Timer.After(0, fn) end)
+    end
+
+    if canAssistUnit(context.unit, name) then
+        action("Assist", function() setAssistTarget(name) end)
+    end
+    -- Offered for tracked NPCs too, so an existing entry can be promoted to slot 1.
+    if matchedSlot ~= 1 then
+        action("Track First", function() addFinderFocus(name, nil, matchedSlot) end)
+    end
+    if not matchedSlot then
+        action("Track", function() addFinder(name) end)
+    end
     if matchedSlot then
-        root:CreateButton("Remove Target", function() C_Timer.After(0, function() removeFinder(matchedSlot) end) end)
-    else
-        root:CreateButton("Add Target", function() C_Timer.After(0, function() addFinder(name) end) end)
+        action("Untrack", function() removeFinder(matchedSlot) end)
     end
     if targetCount() > 0 then
-        root:CreateButton("Clear Targets", function() C_Timer.After(0, function() clearFinder() end) end)
+        sub:CreateDivider()
+        action("Clear Unit List", clearFinder)
     end
 end
 
