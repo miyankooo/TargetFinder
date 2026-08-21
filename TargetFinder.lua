@@ -1376,13 +1376,13 @@ local function appendMenu(_, root, context)
         end
     end
 
-    -- Omit the responder so the row opens a submenu instead of closing the menu.
+    -- Flat rows under a title, so no submenu hop is needed to reach an action.
     root:CreateDivider()
-    local sub = root:CreateButton(ADDON_NAME)
+    root:CreateTitle(ADDON_NAME)
 
     -- Defer past the click so the menu tears down before the action runs.
     local function action(label, fn)
-        sub:CreateButton(label, function() C_Timer.After(0, fn) end)
+        root:CreateButton(label, function() C_Timer.After(0, fn) end)
     end
 
     if canAssistUnit(context.unit, name) then
@@ -1399,7 +1399,7 @@ local function appendMenu(_, root, context)
         action("Untrack", function() removeFinder(matchedSlot) end)
     end
     if targetCount() > 0 then
-        sub:CreateDivider()
+        root:CreateDivider()
         action("Clear Unit List", clearFinder)
     end
 end
