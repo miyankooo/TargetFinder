@@ -14,7 +14,8 @@ local ACTION_SLOTS = 72
 local GLOW_SECONDS = 4
 local MARK_THROTTLE = 0.15
 
-local MINIMAP_ICON = "Interface\\Icons\\Ability_Hunter_MasterMarksman"
+-- Mirror the FIND macro icon so the minimap button reads as the same action
+local MINIMAP_ICON = "Interface\\Icons\\" .. FIND_ICON
 local MINIMAP_DEFAULT_POS = 215
 
 -- Priority order, ascending = higher priority:
