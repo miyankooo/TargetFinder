@@ -790,6 +790,67 @@ local function hideSuggestions(input)
     if input.qtPopup then input.qtPopup:Hide() end
 end
 
+local addAllFromSuggestions
+
+local function setSuggestionSelection(pop, index)
+    pop.selected = index
+    for i = 1, MAX_SUGGESTIONS do
+        local row = pop.rows[i]
+        if row then
+            if i == index then row.highlight:Show() else row.highlight:Hide() end
+        end
+    end
+end
+
+local function moveSuggestionSelection(input, delta)
+    local pop = input.qtPopup
+    if not pop or not pop:IsShown() then return false end
+    local count = pop.count or 0
+    if count == 0 then return false end
+    local nextIndex = (pop.selected or 0) + delta
+    if nextIndex < 1 then
+        nextIndex = count
+    elseif nextIndex > count then
+        nextIndex = 1
+    end
+    setSuggestionSelection(pop, nextIndex)
+    return true
+end
+
+local function activateSuggestion(input, entry)
+    if not entry then return end
+    if entry.type == "quest" then
+        local picks = getQuestNpcs(entry.questId)
+        if not picks or #picks == 0 then
+            announce("No NPCs found for that quest.")
+            return
+        end
+        input:SetText(input.qtStored or "")
+        input:ClearFocus()
+        hideSuggestions(input)
+        addFinderBatch(picks)
+        return
+    end
+    local picked = entry.name
+    if not picked or picked == "" then return end
+    input:SetText(picked)
+    hideSuggestions(input)
+    if applyRowInput and input.slot then
+        applyRowInput(input.slot)
+    end
+end
+
+-- Enter takes the keyboard selection, so plain typed text still applies unchanged.
+local function takeSelectedSuggestion(input)
+    local pop = input.qtPopup
+    if not pop or not pop:IsShown() then return false end
+    local index = pop.selected or 0
+    local row = index > 0 and pop.rows[index]
+    if not row or not row:IsShown() or not row.entry then return false end
+    activateSuggestion(input, row.entry)
+    return true
+end
+
 local function buildSuggestionPopup(input)
     if input.qtPopup then return input.qtPopup end
     local row = input:GetParent()
@@ -830,31 +891,9 @@ local function buildSuggestionPopup(input)
         text:SetWordWrap(false)
         row.text = text
 
-        row:SetScript("OnEnter", function() highlight:Show() end)
-        row:SetScript("OnLeave", function() highlight:Hide() end)
-        row:SetScript("OnClick", function()
-            local entry = row.entry
-            if not entry then return end
-            if entry.type == "quest" then
-                local picks = getQuestNpcs(entry.questId)
-                if not picks or #picks == 0 then
-                    announce("No NPCs found for that quest.")
-                    return
-                end
-                input:SetText(input.qtStored or "")
-                input:ClearFocus()
-                hideSuggestions(input)
-                addFinderBatch(picks)
-                return
-            end
-            local picked = entry.name
-            if not picked or picked == "" then return end
-            input:SetText(picked)
-            hideSuggestions(input)
-            if applyRowInput and input.slot then
-                applyRowInput(input.slot)
-            end
-        end)
+        row:SetScript("OnEnter", function() setSuggestionSelection(pop, i) end)
+        row:SetScript("OnLeave", function() setSuggestionSelection(pop, 0) end)
+        row:SetScript("OnClick", function() activateSuggestion(input, row.entry) end)
 
         pop.rows[i] = row
     end
@@ -881,6 +920,8 @@ end
 local function showSuggestions(input, list)
     local pop = buildSuggestionPopup(input)
     local count = math.min(#list, MAX_SUGGESTIONS)
+    pop.count = count
+    pop.selected = 0
     if count == 0 then
         pop:Hide()
         return
@@ -925,6 +966,15 @@ local function showSuggestions(input, list)
 end
 
 local function attachAutocomplete(input, onChange)
+    -- Keep arrow keys inside the edit box so OnArrowPressed fires, as Blizzard's AutoComplete does.
+    input:SetAltArrowKeyMode(false)
+    input:SetScript("OnArrowPressed", function(self, key)
+        if key == "UP" then
+            return moveSuggestionSelection(self, -1)
+        elseif key == "DOWN" then
+            return moveSuggestionSelection(self, 1)
+        end
+    end)
     input:SetScript("OnTextChanged", function(self, userInput)
         if onChange then onChange() end
         if not userInput then return end
@@ -941,7 +991,8 @@ local function attachAutocomplete(input, onChange)
     input:SetScript("OnTabPressed", function(self)
         local pop = self.qtPopup
         if not pop or not pop:IsShown() then return end
-        local first = pop.rows[1]
+        local index = (pop.selected or 0) > 0 and pop.selected or 1
+        local first = pop.rows[index]
         if not first or not first:IsShown() then return end
         local entry = first.entry
         if not entry or entry.type ~= "npc" then return end
@@ -953,7 +1004,7 @@ local function attachAutocomplete(input, onChange)
     end)
 end
 
-local function addAllFromSuggestions(input)
+addAllFromSuggestions = function(input)
     local pop = input.qtPopup
     if not pop or not pop:IsShown() then
         announce("No suggestions to add.")
@@ -1184,7 +1235,10 @@ local function buildSlotRow(parent, slot, anchorAbove, gap)
         applyRowInput(slot)
     end)
 
-    input:SetScript("OnEnterPressed", function() applyRowInput(slot) end)
+    input:SetScript("OnEnterPressed", function(self)
+        if takeSelectedSuggestion(self) then return end
+        applyRowInput(slot)
+    end)
     input:SetScript("OnEscapePressed", function(self)
         local stored = findTargets[slot]
         self:SetText(stored and stored.name or "")
