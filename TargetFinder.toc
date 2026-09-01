@@ -1,4 +1,4 @@
-## Interface: 11570
+## Interface: 11509
 ## Title: Target Finder
 ## Notes: Build a list of named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search via Questie (optional). WoW Classic 1.15.x.
 ## Author: MIYANKO
