@@ -1,115 +1,60 @@
-# Target Finder
+# TargetFinder
 
-Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; works as a pure manual list when it isn't. WoW Classic 1.15.x.
+Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; a plain manual list when it isn't.
 
-## How it works
+## Features
 
-Target Finder maintains a single **FIND** macro shaped like:
+- **One FIND macro** — press it to grab the highest-priority living NPC on your list, and spam it to cycle through them as they come into range
+- **Automatic raid markers** — each slot owns a marker, applied whenever you acquire that NPC, by macro or by tab-targeting
+- **Add Nearby Quest Units** — fills the list with quest NPCs from your zone, sorted by real distance, kill and drop targets first
+- **Quest-aware search** — the slot input matches NPC names from Questie's database and quest names from your log, tagged by role
+- **Right-click menu** — Track, Track First and Untrack on any unit frame, plus an **ASSIST** macro for party and raid members
+- **Minimap button** — left-click opens the panel, shift+left-click clears the list, right-click adds nearby quest units
+- Skips dead NPCs, and for kill and drop slots also skips anything unattackable or tapped by another player
 
-```
-/run TF_Cycle()
-/stopmacro [nodead]
-/target NAME1
-…
-/target NAME8
-```
+## Installation
 
-Pressing the macro fires `TF_Cycle()` once, which scans visible nameplates and prefers a **living** match — for kill/drop slots, also **attackable** and **not tapped by another player**. Slots are checked in priority order (slot 1 first), so the highest-priority living candidate wins. If `TF_Cycle` finds one, `/stopmacro [nodead]` ends the macro there. Otherwise the `/target` chain runs as today and grabs whoever's in range (also the in-combat path — `TF_Cycle` is a no-op in combat because Blizzard protects targeting from `/run`).
+1. Copy the `TargetFinder/` folder into `World of Warcraft/_classic_era_/Interface/AddOns/`.
+2. Restart the game or `/reload`.
+3. Enable **Target Finder** in the AddOns list.
 
-Either way the addon applies the slot's raid marker via `PLAYER_TARGET_CHANGED`. Spam the macro to cycle through your tracked NPCs as they come within range.
+## Usage
 
-After you first add something, open the macro book (`/m`) and drag **FIND** onto your action bar.
+1. Left-click the minimap icon to open the **Target Finder** panel.
+2. Type an NPC or quest name into a slot and press **+**, or click **Add Nearby Quest Units**.
+3. Open the macro book (`/m`) and drag the **FIND** macro onto your action bar.
+4. Press FIND to target and mark. Press it again to move to the next NPC.
 
-Both **FIND** and **ASSIST** are written out of combat only. Blizzard blocks `CreateMacro` / `EditMacro` during combat, so writes made in combat are queued and replayed on `PLAYER_REGEN_ENABLED`, with a single red on-screen notice per combat session.
-
-## Panel
-
-Left-click the minimap icon to toggle a draggable panel titled **Target Finder**. A yellow **Tracked Unit Names** header with a short grey helper text sits above the eight slots, which live directly in the frame:
-
-- Each slot displays its assigned raid marker, the tracked NPC name, and a close button to remove it.
-- Each slot input accepts any NPC or quest name; suggestions appear in a popup (Questie required for suggestions).
-- **+** — round red icon button (same family as the close button) that appears while typing; adds the typed name to that slot.
-- **Add Nearby Quest Units** — clears the list and refills it with quest-related NPCs from your current zone, sorted by actual distance to your character. Disabled with a greyed-out `Requires Questie.` tooltip when Questie is not installed.
-- **Clear Unit List** — empties the list. Sits beside the nearby button at equal width.
-
-Press Escape or the corner `X` to close the panel.
-
-## Search (Questie required)
-
-The input box matches both NPC names from Questie's database and quest names from your current quest log. Quest-related NPCs are tagged with their quest name in brackets and grouped by role:
-
-- ⚔️ **Kill** — `objectives.creatures` and kill-credit alternates
-- 🎒 **Drop** — NPCs that drop items required by your quest objectives
-- ❗ **Quest giver** — `startedBy` and `finishedBy` NPCs
-
-Each appears with the matching Questie icon (sword, bag, gold `!`). Within the suggestion popup, quest rows are labelled `[Quest] <name>`; clicking one adds every NPC tied to that quest in one batch.
-
-The **Add All** footer button in the popup adds every visible suggestion, expanding any quest rows into their NPC list and deduping.
-
-## Minimap icon
-
-- **Left-click** — toggle the panel.
-- **Shift + left-click** — clear the unit list.
-- **Right-click** — add nearby quest units (same as the panel button). Greyed out in the tooltip, with a `Requires Questie.` note, when Questie is not installed.
-
-### Right-click selection rule
-
-Candidates are gathered from your current quest log:
-
-- **Active (incomplete) quests** contribute kill targets (`monster`/`killcredit` objectives) and item-drop NPCs (`npcDrops` for `item` objectives).
-- **Completed quests** contribute their `finishedBy` turn-in NPCs.
-- `startedBy` NPCs and `finishedBy` NPCs on incomplete quests are skipped — they aren't actionable.
-
-Candidates are then narrowed by distance and ordered by priority:
-
-1. Sort the whole candidate pool by distance ascending; take the closest 8.
-2. Within those 8, sort by priority: **Kill → Drop → Turn-in**, with distance as the tiebreaker.
-
-Result: in the field, the list fills with kill/drop mobs; in a city standing on top of turn-in NPCs, the list fills with quest givers. Either way, the macro cycles the highest-priority slot first.
-
-If nothing nearby qualifies, you'll see `Nothing to track here yet.`
-
-## Right-click unit-frame menu
-
-Right-click any unit frame (target, party, raid, etc.) for a single **Target Finder** submenu, appended after a divider. Everything lives one level down so the addon costs one row in an already-crowded menu:
-
-- **Assist** — shown only for friendly players in your party or raid. Writes an **ASSIST** macro containing `/assist NAME`, then opens the macro book and pulses the icon if that macro isn't on an action bar yet, exactly like the **FIND** macro. Drag it onto a bar once and press it to pick up whatever the current assist target is fighting.
-- **Track First** — put this NPC at slot 1 for top priority, shifting everything else down. Hidden when it already holds slot 1. Adding a new name to a full list drops the slot-8 entry and names it in chat.
-- **Track** — append this NPC to the next empty slot. Hidden if it's already tracked.
-- **Untrack** — shown only if this NPC is already tracked.
-- **Clear Unit List** — shown only if the list isn't empty, behind its own divider so it isn't a neighbour-misclick away from **Untrack**. Same label as the panel button, for the same action.
-
-Names deliberately avoid the word *focus*: Blizzard's own **Set Focus** sits in the same menu and means something else entirely.
-
-### One entry, one set of actions
-
-The menu matches by substring, so tracking `Auctioneer` makes every `Auctioneer <something>` read as tracked. All three actions then operate on that one matched entry, never on a near-duplicate of it:
-
-- **Untrack** removes `Auctioneer`.
-- **Track First** moves `Auctioneer` to slot 1. It does not add `Auctioneer Chillgular` alongside it.
-- **Track** is hidden, because something already covers this NPC.
-
-To track the specific mob instead, untrack the broad name first, then track the specific one.
-
-Yourself, hostile players and NPCs never get the **Assist** entry. Group membership is tested with `UnitInParty` / `UnitInRaid` against the menu's unit token, falling back to the character name the way Blizzard's own `UnitPopupSharedUtil.IsInGroupWithPlayer` does.
+There are no slash commands — everything lives in the UI.
 
 ## Markers
 
-The list holds up to 8 names, each tied to one raid marker in this order:
+The eight slots map to markers in this order:
 
-1. Skull
-2. Cross
-3. Square
-4. Triangle
-5. Diamond
-6. Circle
-7. Star
-8. Moon
+| Slot | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Marker | Skull | Cross | Square | Triangle | Diamond | Circle | Star | Moon |
 
-The marker is applied whenever the macro acquires a target, and also when you tab- or click-target any saved NPC outside the macro (via `PLAYER_TARGET_CHANGED` with a case-insensitive substring match). Marker writes are deduped, so spamming the macro never causes flicker.
+## Search roles
 
-There are no slash commands. Everything lives in the UI.
+| Icon | Role | Source |
+| --- | --- | --- |
+| ⚔️ | Kill | Quest kill objectives and kill-credit alternates |
+| 🎒 | Drop | NPCs that drop items your objectives need |
+| ❗ | Quest giver | Quest start and turn-in NPCs |
+
+Clicking a `[Quest]` row adds every NPC tied to that quest at once. **Add All** adds every visible suggestion.
+
+## Requirements
+
+WoW Classic Era 1.15.x. Questie is optional: without it the addon works as a manual list, but name suggestions and **Add Nearby Quest Units** are unavailable.
+
+## Restrictions
+
+- Targeting is protected during combat, so the smart pick is inactive in combat and the macro falls back to its plain `/target` chain.
+- Macros cannot be written in combat. Writes made in combat are queued and replayed when you leave it, with a single on-screen notice.
+- Names are matched by substring, so tracking `Auctioneer` covers every `Auctioneer <something>`. To track one specific mob, untrack the broad name first.
 
 ## Saved data
 
-Per-character: your tracked NPC list. Account-wide: the minimap icon position. Both persist across reloads and logins.
+Your tracked NPC list is saved per character; the minimap icon position is saved per account.
