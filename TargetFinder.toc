@@ -4,7 +4,7 @@
 ## Author: miyanko
 ## Version: 4.0.0
 ## Category: Combat
-## IconTexture: 132177
+## IconTexture: 132212
 ## OptionalDeps: Questie
 ## SavedVariables: TargetFinderDB
 ## SavedVariablesPerCharacter: TargetFinderCharDB
