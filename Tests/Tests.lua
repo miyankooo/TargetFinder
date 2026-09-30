@@ -33,7 +33,15 @@ for raw in io.lines(here .. "../TargetFinder.toc") do
     if key then toc[key] = value end
 end
 check("author is miyanko", toc["Author"] == "miyanko", toc["Author"])
-check("one toc for both clients", toc["Interface"] == "11509, 16001", toc["Interface"])
+check("Forever interface only", toc["Interface"] == "16001", toc["Interface"])
+check("version 4.0.0", toc["Version"] == "4.0.0", toc["Version"])
+check("Category read by the AddOns list", toc["Category"] == "Combat", toc["Category"])
+check("no X-Category", toc["X-Category"] == nil)
+local tagged = false
+for raw in io.lines(here .. "../TargetFinder.toc") do
+    if raw:match("%[AllowLoad") then tagged = true end
+end
+check("no per-line load tags", not tagged)
 for _, key in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
     check(key .. " names a real global", toc[key] and type(_G[toc[key]]) == "function", toc[key])
 end
@@ -83,13 +91,6 @@ ns.targets[1] = ns.MakeEntry("Anything")
 ns.WriteFinderMacro()
 check("cap failure announced", chatHas("account macro list is full"), table.concat(W.chat, " / "))
 W.macroCap = 120
-
-section("panel markers get the sprite sheet")
-local tex = CreateFrame("Frame"):CreateTexture()
-ns.ShowMarkerTexture(tex, 8)
-check("texture file assigned", tex.texturePath == "Interface\\TargetingFrame\\UI-RaidTargetingIcons", tex.texturePath)
-check("cell selected", tex.markerCell == 8)
-check("shown", tex.shown == true)
 
 section("markers follow the prefix rule")
 ns.WipeTargets()
@@ -160,8 +161,6 @@ local ok, answer = pcall(ns.CanAccess, "Someone")
 check("a raising check does not escape", ok, answer)
 check("a raising check reads as not accessible", answer == false, answer)
 check("the name is withheld instead", ns.ReadableName("target") == nil)
-canaccessvalue = nil
-check("an absent check reads as accessible", ns.CanAccess("Someone") == true)
 canaccessvalue = realCanAccess
 check("a plain value stays accessible", ns.CanAccess("Someone") == true)
 
@@ -174,7 +173,7 @@ local root = {
 }
 ns.WipeTargets()
 W.units = { target = { name = "Mangeclaw" } }
--- exactly what Blizzard passes for an NPC target frame on both branches
+-- exactly what Blizzard passes for an NPC target frame
 W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon", fromTargetFrame = true })
 local trackFn
 for _, it in ipairs(root.items) do if it.text == "Track" then trackFn = it.fn end end
@@ -273,7 +272,7 @@ check("nearby add refuses cleanly while loading",
       W.chat[1] and W.chat[1]:match("still loading") ~= nil, W.chat[1])
 _G.QuestieLoader = nil
 
--- A small Questie world with the shapes both Questie 11.37.1 and master use: quest objects in
+-- A small Questie world with the shapes the installed Questie 12.0.3 uses: quest objects in
 -- QuestiePlayer.currentQuestlog carrying ObjectiveData and Objectives[i].Completed.
 local function fakeQuestie()
     local npcs = {
@@ -323,8 +322,8 @@ local function fakeQuestie()
         return modules[name]
     end }
     _G.Questie = {
-        usedIcons = { [1] = "slay", [2] = "loot", [5] = "talk", [6] = "available" },
-        ICON_TYPE_SLAY = 1, ICON_TYPE_LOOT = 2, ICON_TYPE_TALK = 5, ICON_TYPE_AVAILABLE = 6,
+        usedIcons = { [1] = "slay", [2] = "loot", [6] = "available" },
+        ICON_TYPE_SLAY = 1, ICON_TYPE_LOOT = 2, ICON_TYPE_AVAILABLE = 6,
     }
     return modules, quest, state
 end
@@ -423,6 +422,13 @@ row1.updateState()
 check("an empty unstored row offers nothing", row1.addBtn.shown == false and row1.removeBtn.shown == false)
 panel.shown = true
 check("close button hides the panel itself, skipping HideUIPanel", panel.onCloseCallback() == false and panel.shown == false)
+ns.targets[1] = ns.MakeEntry("Marked")
+ns.RefreshPanel()
+check("slot marker gets the sprite sheet", row1.icon.texturePath == "Interface\\TargetingFrame\\UI-RaidTargetingIcons", row1.icon.texturePath)
+check("slot marker picks its cell", row1.icon.markerCell == 8 and row1.icon.shown == true, row1.icon.markerCell)
+ns.WipeTargets()
+ns.RefreshPanel()
+check("an empty slot hides its marker", row1.icon.shown == false)
 panel.nearbyButton.scripts.OnEnter(panel.nearbyButton)
 check("nearby tooltip uses Blizzard's title helper", W.tooltip[1] == "title:Add Nearby Quest Units", W.tooltip[1])
 

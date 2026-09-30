@@ -12,7 +12,7 @@ local function ownsUnit(slot, unit)
     return ns.SlotCovering(name) == slot
 end
 
--- GetRaidTargetIndex has SecretReturns on 1.60, so the index is only compared once the client lets the addon read it.
+-- GetRaidTargetIndex has SecretReturns (RaidMarkersDocumentation.lua:57), so the index is only compared once the client lets the addon read it.
 local function carriesMarker(unit, marker)
     local current = GetRaidTargetIndex(unit)
     return ns.CanAccess(current) and current == marker

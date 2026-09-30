@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Two launchers share one click and one tooltip: the LibDBIcon minimap button on both clients, and on 1.60 also the Addon Compartment, which Blizzard_Minimap loads only for the mainline family (Blizzard_Minimap.toc:32-33). Era ignores the toc's AddonCompartmentFunc lines, so the globals below are simply never called there.
+-- Two launchers share one click and one tooltip: the LibDBIcon minimap button and the Addon Compartment, which calls the globals the toc names.
 
 local function onLauncherClick(mouseButton)
     if mouseButton == "LeftButton" then
@@ -14,7 +14,7 @@ local function onLauncherClick(mouseButton)
     end
 end
 
--- Blizzard's tooltip helpers keep the launcher tooltip in each client's own colours: white title, green instructions, red for what is missing.
+-- Blizzard's tooltip helpers give the launcher tooltip the standard colours: white title, green instructions, red for what is missing.
 local function fillLauncherTooltip(tooltip)
     GameTooltip_SetTitle(tooltip, ns.ADDON_NAME)
     GameTooltip_AddInstructionLine(tooltip, "Left-click to toggle the panel.")
@@ -40,14 +40,7 @@ function ns.SetupMinimapButton()
         OnTooltipShow = fillLauncherTooltip,
     })
 
-    -- Earlier versions stored the angle under their own key; migrate once so the button does not jump back to the default.
-    local minimap = TargetFinderDB.minimap
-    if minimap.angle and not minimap.minimapPos then
-        minimap.minimapPos = minimap.angle
-    end
-    minimap.angle = nil
-
-    LDBIcon:Register(ns.ADDON_NAME, dataObject, minimap)
+    LDBIcon:Register(ns.ADDON_NAME, dataObject, TargetFinderDB.minimap)
 end
 
 -- Addon Compartment entry points named in the toc. Blizzard calls them with the addon name first, then the mouse button or the menu row.

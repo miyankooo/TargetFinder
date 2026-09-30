@@ -2,7 +2,7 @@
 
 Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; a plain manual list when it isn't.
 
-One addon folder runs on both **WoW Classic Era 1.15.9** and **WoW Forever 1.60.1**. Each client draws the panel, buttons and popups with its own Blizzard art.
+Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own templates.
 
 ## Features
 
@@ -11,13 +11,11 @@ One addon folder runs on both **WoW Classic Era 1.15.9** and **WoW Forever 1.60.
 - **Add Nearby Quest Units**: fills the list from your quest log with the closest open objectives, kill and drop targets first, or the turn-in NPC once Questie counts the quest complete.
 - **Quest-aware search**: the slot input suggests NPC names from Questie's database and quest names from your log, tagged by role.
 - **Right-click menu**: Track, Track First, Untrack and Clear on unit frames, plus an **ASSIST** macro for party and raid members.
-- **Launchers**: a minimap button on both clients, and on WoW Forever also an entry in the addon menu under the minimap.
+- **Launchers**: a minimap button and an entry in the addon menu under the minimap.
 
 ## Installation
 
-1. Copy the `TargetFinder/` folder into your client's AddOns folder:
-   - Classic Era: `World of Warcraft/_classic_era_/Interface/AddOns/`
-   - WoW Forever: `World of Warcraft/_classic_beta_/Interface/AddOns/`
+1. Copy the `TargetFinder/` folder into `World of Warcraft/_classic_beta_/Interface/AddOns/`.
 2. Restart the game or `/reload`.
 3. Enable **Target Finder** in the AddOns list.
 
@@ -108,8 +106,7 @@ Only NPCs that spawn in your current zone, or already show a nameplate, qualify.
 
 | Client | Interface | Questie |
 | --- | --- | --- |
-| WoW Classic Era 1.15.9 | `11509` | Questie 11.x (bundled database), or Questie 12 with the **QuestieDB** addon |
-| WoW Forever 1.60.1 | `16001` | Questie 12 with the **QuestieDB** addon |
+| WoW Forever 1.60 | `16001` | Questie 12 with the **QuestieDB** addon |
 
 Questie is optional. Without it the addon works as a manual list, and name suggestions and **Add Nearby Quest Units** are unavailable. Questie is the only quest data source: names, spawns, drops, givers and objective progress all come from it. The native quest API is not used for quest data.
 
@@ -117,8 +114,8 @@ Questie is optional. Without it the addon works as a manual list, and name sugge
 
 - Macros cannot be written in combat. Writes made in combat are queued and replayed when you leave it, with one on-screen notice per fight.
 - Names match from the start, like `/target`. Tracking `Auctioneer` covers `Auctioneer Chillgular`; tracking `Chillgular` does not, because FIND could never acquire it.
-- Blizzard decides who may set raid markers in a group (on Classic Era, in a raid, only the leader and assistants). When you may not, the markers simply do not appear.
-- On WoW Forever, restricted content can hide unit names and identities from addons. The addon then skips marking that unit and withholds **Assist**; everything else keeps working.
+- Blizzard decides who may set raid markers in a group. When you may not, the markers simply do not appear.
+- Restricted content can hide unit names and identities from addons. The addon then skips marking that unit and withholds **Assist**; everything else keeps working.
 - If a Questie update changes something the addon reads, you get one chat line naming the problem instead of Lua errors, and the Questie features stay off until an update.
 
 ## Saved data
@@ -131,9 +128,10 @@ The offline suite loads the addon in toc order against a client stub and a small
 
 | Path | Holds |
 | --- | --- |
-| `TargetFinder.toc` | One toc for both clients, `## Interface: 11509, 16001`, plus the addon-menu entry points |
+| `TargetFinder.toc` | `## Interface: 16001`, plus the addon-menu entry points |
 | `TargetFinder.lua` | Bootstrap: saved variables and the three events |
-| `Core/Client.lua` | Every Lua-level difference between the clients, detected by feature |
+| `Core/Core.lua` | Shared constants and the chat line |
+| `Core/Secrets.lua` | Guards for unit names and identities the client may hide |
 | `Core/Store.lua` | The slot table, the name rule, saved-variable adoption |
 | `Core/Markers.lua` | Raid markers, one unit per marker |
 | `Core/Macro.lua` | FIND and ASSIST macros, combat queue, macro-book hint |

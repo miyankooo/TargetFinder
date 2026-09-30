@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- The autocomplete popup under a slot row. It owns nothing but presentation: every name it offers comes from Quest.lua, and picking one goes straight back through the row's own apply path.
 
--- One shared popup built like Blizzard's own AutoCompleteBox (Blizzard_AutoComplete/AutoComplete.xml, identical layout on 1.15.9 and 1.60.1): a TooltipBackdropTemplate box, AutoCompleteButtonTemplate rows and a grey "Press Tab" hint. Both templates resolve to each client's own art. Blizzard's box itself is never borrowed, because the chat edit boxes share it and addon writes to it would taint them.
+-- One shared popup built like Blizzard's own AutoCompleteBox (Blizzard_AutoComplete/AutoComplete.xml): a TooltipBackdropTemplate box, AutoCompleteButtonTemplate rows and a grey "Press Tab" hint. Blizzard's box itself is never borrowed, because the chat edit boxes share it and addon writes to it would taint them.
 local POPUP_NAME = "TargetFinderSuggestions"
 local MAX_SUGGESTIONS = ns.MAX_SUGGESTIONS
 
@@ -74,9 +74,7 @@ local function activate(input, entry)
     if not picked or picked == "" then return end
     input:SetText(picked)
     hidePopup(input)
-    if ns.ApplyRowInput and input.slot then
-        ns.ApplyRowInput(input.slot)
-    end
+    ns.ApplyRowInput(input.slot)
 end
 
 -- Enter takes the keyboard selection when there is one, so plain typed text still applies unchanged. Blizzard preselects row 1; this popup does not, because Enter on a typed prefix must store the prefix.

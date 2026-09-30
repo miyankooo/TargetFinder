@@ -2,7 +2,7 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate: AddonList, MacroFrame and FriendsFrame inherit it on both clients, and the name resolves to Classic art on 1.15.9 (Classic/SharedUIPanelTemplates.xml:708) and Mainline art on 1.60.1 (Mainline/SharedUIPanelTemplates.xml:711). The dialog kit is for small popups, which eight editable rows are not. Layout follows AddonList: no portrait, attic text at 12,-30, action buttons 4px in from the bottom corners.
+-- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711): AddonList, MacroFrame and FriendsFrame inherit it. The dialog kit is for small popups, which eight editable rows are not. Layout follows AddonList: no portrait, attic text at 12,-30, action buttons 4px in from the bottom corners.
 local PANEL_NAME = "TargetFinderPanel"
 local PANEL_WIDTH = 360
 
@@ -36,6 +36,15 @@ local CLEAR_LABEL = "Clear Unit List"
 local PANEL_HELP = "Track up to " .. MAX_TARGETS .. " units. FIND targets the highest slot in range and marks it; names match from their start."
 
 local panel
+
+-- SetRaidTargetIconTexture only picks the cell out of the sprite sheet (Mainline/TargetFrame.lua:690) and never assigns the file. Blizzard's own frames set it in XML, so a texture the addon creates has to be given the sheet first or the marker never draws.
+local RAID_ICON_SHEET = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
+
+local function showMarkerTexture(texture, marker)
+    texture:SetTexture(RAID_ICON_SHEET)
+    SetRaidTargetIconTexture(texture, marker)
+    texture:Show()
+end
 
 -- Typing in a row and pressing Enter, clicking Add, or clearing the box and pressing Enter all land here.
 function ns.ApplyRowInput(slot)
@@ -121,7 +130,7 @@ local function buildSlotInput(row, slot)
     return input
 end
 
--- Add is a plain UIPanelButtonTemplate and remove the client's own close button, so both carry each client's art. NoScripts, because the stock close handler would hide the whole row.
+-- Add is a plain UIPanelButtonTemplate and remove is Blizzard's own close button. NoScripts, because the stock close handler would hide the whole row.
 local function buildRowButtons(row, slot)
     local addBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     addBtn:SetSize(ADD_BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -167,7 +176,7 @@ local function buildSlotRow(parent, slot)
     return row
 end
 
--- Blizzard's tooltip helpers carry each client's tooltip colours; the error line says why the button is off.
+-- Blizzard's tooltip helpers carry the standard tooltip colours; the error line says why the button is off.
 local function showNearbyTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     GameTooltip_SetTitle(GameTooltip, NEARBY_LABEL)
@@ -219,7 +228,7 @@ local function buildPanel()
     panel:Hide()
     tinsert(UISpecialFrames, PANEL_NAME)
 
-    -- The template's close button calls HideUIPanel, which refuses insecure callers in combat on both clients (UIParentPanelManager.lua CheckProtectedFunctionsAllowed). UIPanelCloseButton_OnClick asks onCloseCallback first, so the panel hides itself and the stock path is skipped.
+    -- The template's close button calls HideUIPanel, which refuses insecure callers in combat (UIParentPanelManager.lua CheckProtectedFunctionsAllowed). UIPanelCloseButton_OnClick asks onCloseCallback first, so the panel hides itself and the stock path is skipped.
     panel.onCloseCallback = function()
         panel:Hide()
         return false
@@ -254,7 +263,7 @@ function ns.RefreshPanel()
             row.input:SetCursorPosition(0)
         end
         if entry then
-            ns.ShowMarkerTexture(row.icon, ns.FIND_MARKERS[slot])
+            showMarkerTexture(row.icon, ns.FIND_MARKERS[slot])
         else
             row.icon:Hide()
         end

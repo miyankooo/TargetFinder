@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Questie is the only quest data source, on both clients: Era runs Questie 11 with its bundled database or Questie 12 with the QuestieDB addon, Forever runs Questie 12 with QuestieDB. Names, spawns, drops, givers and objective progress all come from Questie; native APIs only supply the player's map position and the units on screen. Every Questie internal is existence-checked and each public entry point runs protected, so a changed internal ends in one chat line instead of a Lua error. The rest of the addon only ever calls the ns.* functions below.
+-- Questie 12 with the QuestieDB addon is the only quest data source. Names, spawns, drops, givers and objective progress all come from Questie; native APIs only supply the player's map position and the units on screen. Every Questie internal is type-checked and each public entry point runs protected, so a changed internal ends in one chat line instead of a Lua error. The rest of the addon only ever calls the ns.* functions below.
 
 local npcNames
 local npcNamesLower
@@ -61,7 +61,6 @@ function ns.QuestieKindIcons()
     return {
         [ns.KIND_KILL] = used[Q.ICON_TYPE_SLAY],
         [ns.KIND_DROP] = used[Q.ICON_TYPE_LOOT],
-        [ns.KIND_ASSOC] = used[Q.ICON_TYPE_TALK],
         [ns.KIND_GIVER] = used[Q.ICON_TYPE_AVAILABLE],
     }
 end
@@ -217,7 +216,6 @@ end
 
 -- The player's position in Questie's zone ids. ZoneDB:GetAreaIdByUiMapId raises for a map it cannot place, such as an instance or a map newer than Questie, hence the pcall.
 local function playerWhere()
-    if not C_Map or not C_Map.GetBestMapForUnit then return nil end
     local uiMapId = C_Map.GetBestMapForUnit("player")
     if not uiMapId then return nil end
     local ZoneDB = questieModule("ZoneDB")
@@ -229,7 +227,7 @@ local function playerWhere()
     if type(ZoneDB.GetParentZoneId) == "function" then
         where.parentId = ZoneDB:GetParentZoneId(areaId)
     end
-    local pos = C_Map.GetPlayerMapPosition and C_Map.GetPlayerMapPosition(uiMapId, "player")
+    local pos = C_Map.GetPlayerMapPosition(uiMapId, "player")
     if pos then
         where.x, where.y = pos.x * 100, pos.y * 100
     end
