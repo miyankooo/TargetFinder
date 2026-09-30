@@ -77,6 +77,13 @@ function CreateFrame(kind, name, parent, template)
     f.scripts = {}
     f.events = {}
     f.textures = {}
+    f.points = {}
+    f.SetPoint = function(self, point, rel, relPoint, x, y)
+        self.points[#self.points+1] = { point = point, rel = rel, relPoint = relPoint, x = x, y = y }
+        return self
+    end
+    f.ClearAllPoints = function(self) self.points = {}; return self end
+    f.SetFrameStrata = function(self, strata) self.strata = strata; return self end
     f.SetScript = function(self, ev, fn) self.scripts[ev] = fn; return self end
     f.GetScript = function(self, ev) return self.scripts[ev] end
     f.RegisterEvent = function(self, ev)
@@ -124,9 +131,11 @@ function CreateFrame(kind, name, parent, template)
     if kind == "Button" then
         f.SetText = function(self, v) self.text = v; return self end
     end
-    -- ButtonFrameTemplate hands its content well out as .Inset
+    -- ButtonFrameTemplate hands its content well out as .Inset, with PortraitFrameMixin's title and portrait setters
     if template == "ButtonFrameTemplate" then
         f.Inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
+        f.SetTitle = function(self, t) self.title = t; return self end
+        f.SetPortraitToAsset = function(self, asset) self.portraitAsset = asset; return self end
     end
     W.created[#W.created+1] = f
     if name then _G[name] = f end
@@ -217,7 +226,25 @@ Menu = { ModifyMenu = function(tag, cb) W.menuHooks = W.menuHooks or {}; W.menuH
 ADD = "Add"
 PRESS_TAB = "Press Tab"
 GameFontHighlight = {}
-function ButtonFrameTemplate_HidePortrait(f) f.portraitHidden = true end
+-- MagicButton_OnLoad only adjusts anchors that exist when it runs, so record how many there were
+function MagicButton_OnLoad(b) b.magicAnchors = #b.points end
+PANEL_INSET_LEFT_OFFSET = 4
+PANEL_INSET_RIGHT_OFFSET = -6
+PANEL_INSET_BOTTOM_OFFSET = 4
+PANEL_INSET_BOTTOM_BUTTON_OFFSET = 26
+PANEL_INSET_TOP_OFFSET = -24
+PANEL_INSET_ATTIC_OFFSET = -60
+-- Blizzard builds these from C_UIColor.GetColors() at load; only the methods the addon calls are stubbed
+local function colorObject(hex, r, g, b)
+    return {
+        WrapTextInColorCode = function(_, text) return "|cff" .. hex .. text .. "|r" end,
+        GetRGB = function() return r, g, b end,
+    }
+end
+YELLOW_FONT_COLOR = colorObject("ffff00", 1, 1, 0)
+RED_FONT_COLOR = colorObject("ff2020", 1, 0.125, 0.125)
+GRAY_FONT_COLOR = colorObject("808080", 0.5, 0.5, 0.5)
+LIGHTGRAY_FONT_COLOR = colorObject("bfbfbf", 0.75, 0.75, 0.75)
 local function tooltipLine(kind)
     return function(_, text) W.tooltip[#W.tooltip+1] = kind .. ":" .. tostring(text) end
 end

@@ -35,7 +35,7 @@ function ns.SetupMinimapButton()
     local dataObject = LDB:NewDataObject(ns.ADDON_NAME, {
         type = "launcher",
         text = ns.ADDON_NAME,
-        icon = ns.MINIMAP_ICON,
+        icon = ns.ADDON_ICON,
         OnClick = function(_, mouseButton) onLauncherClick(mouseButton) end,
         OnTooltipShow = fillLauncherTooltip,
     })

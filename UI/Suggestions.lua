@@ -16,9 +16,6 @@ local ICON_SIZE = 12
 local ICON_GAP = 2
 
 local QUEST_LABEL = "[Quest] "
-local QUEST_SUFFIX_COLOR = "|cff808080"
-local HINT_COLOR = "|cffbbbbbb"
-local COLOR_END = "|r"
 local ADD_ALL_TEXT = "Add All"
 
 local popup
@@ -179,9 +176,10 @@ local function buildPopup()
     addAll:SetScript("OnClick", function() addAllShown(popup.owner) end)
     popup.addAll = addAll
 
+    -- AutoComplete_OnLoad tints this hint with a literal light grey; LIGHTGRAY_FONT_COLOR is the colour object for that shade.
     local hint = popup:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     hint:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", TEXT_INSET, 10)
-    hint:SetText(HINT_COLOR .. PRESS_TAB .. COLOR_END)
+    hint:SetText(LIGHTGRAY_FONT_COLOR:WrapTextInColorCode(PRESS_TAB))
 
     return popup
 end
@@ -189,7 +187,7 @@ end
 local function entryText(entry)
     if entry.type == "quest" then return QUEST_LABEL .. entry.name end
     if entry.isQuestNpc and entry.questName then
-        return entry.name .. " " .. QUEST_SUFFIX_COLOR .. "(" .. entry.questName .. ")" .. COLOR_END
+        return entry.name .. " " .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. entry.questName .. ")")
     end
     return entry.name
 end

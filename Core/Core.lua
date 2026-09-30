@@ -27,16 +27,13 @@ ns.KIND_KILL = 1
 ns.KIND_DROP = 2
 ns.KIND_GIVER = 4
 
--- Mirror the FIND macro icon so the minimap button reads as the same action.
-ns.MINIMAP_ICON = "Interface\\Icons\\" .. ns.FIND_ICON
+-- The toc's IconTexture, shared by the panel portrait and the minimap button so both read as this addon.
+ns.ADDON_ICON = 132177
 ns.MINIMAP_DEFAULT_POS = 215
-
-local YELLOW = "|cffffff00"
-local COLOR_END = "|r"
 
 -- One tagged line per user-visible event, so the addon never writes to chat by any other route.
 function ns.Announce(msg)
-    print(YELLOW .. "[" .. ns.ADDON_NAME .. "]:" .. COLOR_END .. " " .. msg)
+    print(YELLOW_FONT_COLOR:WrapTextInColorCode("[" .. ns.ADDON_NAME .. "]:") .. " " .. msg)
 end
 
 function ns.Trim(value)

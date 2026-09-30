@@ -1,6 +1,6 @@
 local addonName, ns = ...
 
--- Bootstrap only: saved variables, the three events the addon reacts to, and the one-time registrations. Everything else lives in Core/.
+-- Bootstrap only: saved variables, the three events the addon reacts to, and the one-time registrations. Everything else lives in Core/ and UI/.
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
