@@ -12,13 +12,19 @@ local function ownsUnit(slot, unit)
     return ns.SlotCovering(name) == slot
 end
 
--- GetRaidTargetIndex has SecretReturns (RaidMarkersDocumentation.lua:57), so the index is only compared once the client lets the addon read it.
-local function carriesMarker(unit, marker)
+-- GetRaidTargetIndex has SecretReturns (RaidMarkersDocumentation.lua:57), so the index is only used once the client lets the addon read it. The second return is false while it is hidden.
+local function readMarker(unit)
     local current = GetRaidTargetIndex(unit)
-    return ns.CanAccess(current) and current == marker
+    if not ns.CanAccess(current) then return nil, false end
+    return current, true
 end
 
--- Dedupe first, then throttle, so holding the FIND macro down cannot flicker a marker that is already correct. A throttled call is dropped rather than queued: the next target change re-runs it anyway.
+local function carriesMarker(unit, marker)
+    local current, readable = readMarker(unit)
+    return readable and current == marker
+end
+
+-- Dedupe first, then throttle, so holding the FIND macro down cannot flicker a marker that is already correct. A hidden index cannot dedupe, so the throttle alone limits re-sends then. A throttled call is dropped rather than queued: the next target change re-runs it anyway.
 function ns.ApplySlotMarker(slot)
     if not UnitExists("target") then return end
     local marker = ns.FIND_MARKERS[slot]
@@ -45,20 +51,22 @@ function ns.ApplyMarkerFromTarget()
     if slot then ns.ApplySlotMarker(slot) end
 end
 
--- The visible nameplate that should hold a slot's marker: one that already carries it wins, so a marked mob keeps its marker, otherwise the first match in token order.
+-- The visible nameplate that should hold a slot's marker: one that already carries it wins, so a marked mob keeps its marker, otherwise the first match in token order. A hidden index gives no unit, because the marked mob cannot be found and marking the first match would pull the marker off it.
 local function pickNameplate(slot, marker)
     local first
     for i = 1, ns.MAX_NAMEPLATES do
         local unit = "nameplate" .. i
         if UnitExists(unit) and ownsUnit(slot, unit) then
-            if carriesMarker(unit, marker) then return unit end
+            local current, readable = readMarker(unit)
+            if not readable then return nil end
+            if current == marker then return unit end
             first = first or unit
         end
     end
     return first
 end
 
--- A raid marker sits on one unit at a time, so each slot marks exactly one: the current target when it belongs to the slot, since that is the unit the player is looking at, otherwise one visible nameplate. Returns 1 when a unit holds the marker afterwards and 0 when nothing in view matches.
+-- A raid marker sits on one unit at a time, so each slot marks exactly one: the current target when it belongs to the slot, since that is the unit the player is looking at, otherwise one visible nameplate. Returns 1 when a unit holds the marker afterwards and 0 when none could be picked.
 function ns.MarkNearbyForSlot(slot)
     local entry = ns.targets[slot]
     local marker = ns.FIND_MARKERS[slot]
