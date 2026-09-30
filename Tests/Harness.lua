@@ -219,6 +219,7 @@ Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 3
 UNKNOWN = "Unknown"
 UIParent = CreateFrame("Frame")
 UISpecialFrames = {}
+SlashCmdList = {}
 UIErrorsFrame = { AddMessage = function(_, m) W.errors[#W.errors+1] = m end }
 GameTooltip = CreateFrame("Frame")
 MacroFrame = nil

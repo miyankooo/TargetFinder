@@ -624,5 +624,9 @@ ns.AddFinderFirst("Ninth")
 check("Track First still fits by dropping the last", ns.targets[1].name == "Ninth" and ns.TargetCount() == 8)
 check("names what it dropped", chatHas("dropped Unit8"), table.concat(W.chat, " / "))
 
+section("slash command")
+check("/tf and /targetfinder are registered", SLASH_TARGETFINDER1 == "/tf" and SLASH_TARGETFINDER2 == "/targetfinder")
+check("the slash command toggles the panel", SlashCmdList.TARGETFINDER == ns.TogglePanel)
+
 io.write(("\n%d passed, %d failed\n"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

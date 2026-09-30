@@ -11,7 +11,7 @@ Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own
 - **Add Nearby Quest Units**: fills the list from your quest log with the closest open objectives, kill and drop targets first, or the turn-in NPC once Questie counts the quest complete.
 - **Quest-aware search**: the slot input suggests NPC names from Questie's database and quest names from your log, tagged by role.
 - **Right-click menu**: Track, Track First, Untrack and Clear on unit frames, plus an **ASSIST** macro for party and raid members.
-- **Launchers**: a minimap button and an entry in the addon menu under the minimap.
+- **Launchers**: a minimap button, an entry in the addon menu under the minimap, and `/tf` (or `/targetfinder`).
 
 ## Installation
 
@@ -21,7 +21,7 @@ Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own
 
 ## Usage
 
-1. Left-click the minimap icon to open the **Target Finder** panel.
+1. Left-click the minimap icon, or type `/tf`, to open the **Target Finder** panel.
 2. Type an NPC or quest name into a slot and press Enter or **Add**, or click **Add Nearby Quest Units**.
 3. The addon opens the macro book and pulses **FIND** until it is on a bar. Drag it onto your action bar.
 4. Press FIND to target and mark. Press it again to move to the next NPC.
