@@ -24,7 +24,7 @@ It also has:
 
 | Item | State |
 |---|---|
-| Version | 4.0.0. Toc: `## Interface: 16001`, `## Category: Combat`, `## IconTexture: 132177`, `## Author: miyanko`, `OptionalDeps: Questie`, Addon Compartment fields. `.pkgmeta` ignores `Tests` and `MEMORY.md`, no externals |
+| Version | 4.0.0. Toc: `## Interface: 16001`, `## Category: Combat`, `## IconTexture: 132212`, `## Author: miyanko`, `OptionalDeps: Questie`, Addon Compartment fields. `.pkgmeta` ignores `Tests` and `MEMORY.md`, no externals |
 | Git | `main` has three local commits on top of `7ad99db`, not pushed: `c3a1ac5` (split and cleanup), `2dc8878` (fixes), then the UI commit. `1.15.x-backup` = `origin/1.15.x-backup` = `7ad99db` (dual-client 3.2.0), created by the lead. `core.hooksPath` is unset |
 | Layout | `TargetFinder.lua` (bootstrap), `Core/` (Core, Secrets, Store, Markers, Macro, Targets, Quest, UnitMenu), `UI/` (Suggestions, Panel, MinimapButton), `Libs/` (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0, tracked, unedited), `Tests/` |
 | Lua lines | Addon code (no libs, no tests) 1,754 before, 1,767 after. Tests 771 before, 915 after. About 70 Classic and dead lines went; the fixes and the UI spec added about 80 |
@@ -50,13 +50,13 @@ Secret values, in `Core/Secrets.lua` and `Core/Markers.lua`:
 Native UI (shared spec):
 
 - The panel `TargetFinderFrame` is a `ButtonFrameTemplate` window, built lazily by one builder, toggled by `ns.TogglePanel()` from the minimap button and the compartment.
-  - Portrait shown with `SetPortraitToAsset(132177)`, title "Target Finder", strata HIGH, toplevel, clamped, movable, Escape via `UISpecialFrames`, not in `UIPanelWindows`.
+  - Portrait shown with `SetPortraitToAsset(132212)`, title "Target Finder", strata HIGH, toplevel, clamped, movable, Escape via `UISpecialFrames`, not in `UIPanelWindows`.
   - The attic holds the help text at x=60 (clear of the 62 px portrait), centred on the band between `PANEL_INSET_TOP_OFFSET` and `PANEL_INSET_ATTIC_OFFSET`. Rows live in `frame.Inset`. Height comes from `PANEL_INSET_ATTIC_OFFSET` and `PANEL_INSET_BOTTOM_BUTTON_OFFSET`.
   - Bottom bar: Add Nearby Quest Units (primary) at `BOTTOMRIGHT`, Clear Unit List `RIGHT` to its `LEFT`, both `MagicButtonTemplate` anchored with zero offsets, then `MagicButton_OnLoad` (`Mainline/SharedUIPanelTemplates.lua:12-46`).
   - The X closes through `onCloseCallback` (`SharedUIPanelTemplates.lua:150-162`), which hides the panel itself, so it works in combat.
   - Row Add is `UIPanelButtonTemplate`, remove is `UIPanelCloseButtonNoScripts`, inputs `InputBoxTemplate`.
 - Suggestions are built like Blizzard's name autocomplete (`Blizzard_AutoComplete/AutoComplete.xml`): `TooltipBackdropTemplate`, `AutoCompleteButtonTemplate` rows and the `PRESS_TAB` hint. Blizzard's shared `AutoCompleteBox` isn't used, because writing to it would taint chat. The quest tag uses `GRAY_FONT_COLOR`, the hint `LIGHTGRAY_FONT_COLOR`.
-- Minimap button: LibDataBroker `launcher` "Target Finder", icon 132177, db at `TargetFinderDB.minimap`. Tooltip: `GameTooltip_SetTitle` plus instruction lines, a disabled line and an error line while Questie isn't ready.
+- Minimap button: LibDataBroker `launcher` "Target Finder", icon 132212, db at `TargetFinderDB.minimap`. Tooltip: `GameTooltip_SetTitle` plus instruction lines, a disabled line and an error line while Questie isn't ready.
 - Chat prefix `YELLOW_FONT_COLOR`, combat notice `RED_FONT_COLOR`. No hardcoded colour codes or font files remain.
 
 Verified API facts:
@@ -108,7 +108,7 @@ Unverified assumptions kept in code:
 - `type()` on a secret is safe. Blizzard's `Dump.lua` does it; `==` on a possibly secret value is never used.
 - `C_Secrets.ShouldUnitComparisonBeSecret` accepts a grouped character name as its `UnitToken`, like the identity check already did (menus with no unit, such as friends and chat).
 - `LIGHTGRAY_FONT_COLOR` is close to AutoComplete's literal `|cffbbbbbb`. Only its existence is verified (14 loaded Blizzard files use it).
-- File ID 132177 (toc icon, now also the minimap icon and portrait) may not be the same art as `Ability_Hunter_SniperShot`, the FIND macro icon the minimap button used before. No listfile is available offline.
+- Icon resolved (community listfile, 2026-09-30): 132177 was `ability_hunter_mastermarksman`, not Sniper Shot. The toc now uses 132212 = `interface/icons/ability_hunter_snipershot.blp`, so the portrait, the minimap button and the FIND macro show the same art.
 - The frame is now named `TargetFinderFrame` (was `TargetFinderPanel`). A position the client saved under the old name is lost once.
 
 ## Blockers, issues, challenges
@@ -120,7 +120,6 @@ Unverified assumptions kept in code:
 
 ## Owner questions
 
-- Icon: the spec puts the toc icon 132177 on the portrait and the minimap button, while FIND and the old minimap button use `Ability_Hunter_SniperShot`. If 132177 is different art, either keep it (no code change) or set the toc `IconTexture` to the SniperShot file ID so all three match (toc line only).
 
 ## Next steps
 

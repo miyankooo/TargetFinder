@@ -28,7 +28,7 @@ ns.KIND_DROP = 2
 ns.KIND_GIVER = 4
 
 -- The toc's IconTexture, shared by the panel portrait and the minimap button so both read as this addon.
-ns.ADDON_ICON = 132177
+ns.ADDON_ICON = 132212
 ns.MINIMAP_DEFAULT_POS = 215
 
 -- One tagged line per user-visible event, so the addon never writes to chat by any other route.
