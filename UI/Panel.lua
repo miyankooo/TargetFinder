@@ -283,3 +283,6 @@ function ns.TogglePanel()
         panel:Show()
     end
 end
+
+SLASH_TARGETFINDER1, SLASH_TARGETFINDER2 = "/tf", "/targetfinder"
+SlashCmdList.TARGETFINDER = ns.TogglePanel

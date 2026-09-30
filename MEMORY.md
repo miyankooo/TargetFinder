@@ -147,3 +147,7 @@ Forever checks:
 - [ ] Distances look right in a zone whose map differs on Forever, including a sub-zone (TF-10).
 - [ ] After `/reload` and a full relog, there is exactly one FIND macro (TF-20).
 - [ ] With `/console taintLog 1`, a few list edits with FIND unbound show no taint (TF-11).
+
+## Launchers (owner decision 2026-09-30)
+
+- `/tf` and `/targetfinder` toggle the panel through `ns.TogglePanel` (`UI/Panel.lua`), the same toggle the minimap button and the Addon Compartment use. No Blizzard or installed addon uses either command. The test harness stubs `SlashCmdList` and checks the registration (167/167).
