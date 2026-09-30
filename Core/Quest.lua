@@ -26,8 +26,16 @@ local function questieModule(name)
     return module
 end
 
--- Questie 11 assigns the three queries and NPCPointers inside QuestieDB:Initialize after login; Questie 12 binds the queries at file load but NPCPointers only in QuestieDB.Initialize. Requiring all four covers both, so an early click reports "still loading" instead of reading a half-built database.
-local function questieDB()
+-- Questie.API is Questie's stable public contract (Public/README.md). It is missing when Questie is absent, or when a second Questie install replaced the addon table with an empty one.
+local function questieApi()
+    local questie = _G.Questie
+    local api = type(questie) == "table" and questie.API
+    if type(api) ~= "table" then return nil end
+    return api
+end
+
+-- The database module is private, so each field read below is type-checked. A mismatch means a Questie version this code does not know.
+local function databaseModule()
     local db = questieModule("QuestieDB")
     if not db then return nil end
     if type(db.QueryNPCSingle) ~= "function" then return nil end
@@ -37,20 +45,33 @@ local function questieDB()
     return db
 end
 
-function ns.QuestieReady()
-    return questieDB() ~= nil
-end
-
--- Distinguishes "Questie is absent" from "Questie has not finished loading", because the two need different advice.
+-- Questie sets API.isReady as the last step of its init (QuestieInit.lua:342), after its database and quest log are built, so nothing is read before then.
 local function questieStatus()
-    if not _G.QuestieLoader then return "absent" end
-    if not ns.QuestieReady() then return "loading" end
+    local api = questieApi()
+    if not api then return "absent" end
+    if api.isReady ~= true then return "loading" end
+    if not databaseModule() then return "unsupported" end
     return "ready"
 end
 
+local function questieDB()
+    if questieStatus() ~= "ready" then return nil end
+    return databaseModule()
+end
+
+function ns.QuestieReady()
+    return questieStatus() == "ready"
+end
+
+-- Each state that keeps the quest features off needs different advice.
+local QUESTIE_EXCUSES = {
+    absent = "Questie is not loaded.",
+    loading = "Questie is still loading.",
+    unsupported = "This Questie version is not supported.",
+}
+
 function ns.QuestieExcuse()
-    if questieStatus() == "loading" then return "Questie is still loading." end
-    return "Questie is not loaded."
+    return QUESTIE_EXCUSES[questieStatus()]
 end
 
 -- Questie fills usedIcons from its own settings during OnInitialize, so the table is read on every call and follows an icon change made in Questie's options.
@@ -168,6 +189,7 @@ local function newNpcCollector(db)
     return collector
 end
 
+-- One pass over every NPC name, a stall QuestieDB says to take where it is invisible and never on a hover path (QuestieDB src/read/shared.lua:473-476). A keystroke is no better, so it runs once Questie is ready; the first search builds it only if that has not happened yet.
 local function buildNpcNameIndex(db)
     if npcNames then return true end
     local seen = {}
@@ -380,6 +402,24 @@ end
 function ns.FindSuggestions(query)
     local ok, results = guarded(findSuggestions, query)
     return ok and results or {}
+end
+
+local function prebuildNameIndex()
+    local db = questieDB()
+    if db then guarded(buildNpcNameIndex, db) end
+end
+
+-- Questie runs ready callbacks inside its own init, so the index pass waits for the next frame.
+local function onQuestieReady()
+    ns.RefreshPanel()
+    C_Timer.After(0, prebuildNameIndex)
+end
+
+-- Questie calls back at once when it is already ready (Public/RegisterOnReady.lua:15), so registering at login never misses the moment.
+function ns.WatchQuestie()
+    local api = questieApi()
+    if not api or type(api.RegisterOnReady) ~= "function" then return end
+    api.RegisterOnReady(onQuestieReady)
 end
 
 function ns.AddNearbyQuestNpcs()

@@ -31,6 +31,10 @@ W = {
     chat = {},
     errors = {},
     secretsOn = false,
+    markersSecret = false, -- GetRaidTargetIndex hands out a secret
+    nilChecks = 0,         -- canaccessvalue calls that passed nil
+    markCalls = 0,         -- SetRaidTarget calls
+    readyCallbacks = {},   -- functions handed to Questie.API.RegisterOnReady
     created = {},          -- every frame CreateFrame returned, in order
     tooltip = {},          -- lines the GameTooltip_* helpers added
 }
@@ -132,14 +136,24 @@ end
 function UnitExists(u) return W.units[u] ~= nil end
 function UnitName(u) local x = W.units[u]; return x and x.name end
 function UnitIsPlayer(u) local x = W.units[u]; return x ~= nil and x.player == true end
-function UnitIsUnit(a, b) return a == b end
+-- a comparison under restriction returns a secret boolean, and testing one raises in tainted code
+function UnitIsUnit(a, b)
+    local x = W.units[a]
+    if x and x.comparisonSecret then error("attempt to test a secret boolean") end
+    return a == b
+end
 function UnitIsFriend(a, b) local x = W.units[b]; return x ~= nil and x.friend == true end
 function UnitInParty(u) local x = W.units[u]; return x ~= nil and x.party == true end
 function UnitInRaid(u) local x = W.units[u]; return x ~= nil and x.raid == true end
 
-function GetRaidTargetIndex(u) return W.marks[u] end
+local SECRET = { __secret = true }
+function GetRaidTargetIndex(u)
+    if W.markersSecret then return SECRET end
+    return W.marks[u]
+end
 -- a raid marker lives on one unit at a time, so setting it elsewhere moves it
 function SetRaidTarget(u, m)
+    W.markCalls = W.markCalls + 1
     for other, marker in pairs(W.marks) do
         if marker == m then W.marks[other] = nil end
     end
@@ -168,11 +182,23 @@ function IsShiftKeyDown() return false end
 function print(...) W.chat[#W.chat+1] = table.concat({...}, " ") end
 tinsert = table.insert
 
-canaccessvalue = function(v) return not (W.secretsOn and type(v) == "table" and v.__secret) end
+-- the argument is Nilable = false, so nil raises like the client is expected to
+canaccessvalue = function(v)
+    if v == nil then
+        W.nilChecks = W.nilChecks + 1
+        error("bad argument #1 to 'canaccessvalue'")
+    end
+    return not (W.secretsOn and type(v) == "table" and v.__secret)
+end
 
-C_Secrets = { ShouldUnitIdentityBeSecret = function(u)
-    local x = W.units[u]; return (x ~= nil and x.secret == true)
-end }
+C_Secrets = {
+    ShouldUnitIdentityBeSecret = function(u)
+        local x = W.units[u]; return (x ~= nil and x.secret == true)
+    end,
+    ShouldUnitComparisonBeSecret = function(a)
+        local x = W.units[a]; return (x ~= nil and x.comparisonSecret == true)
+    end,
+}
 
 C_Timer = { After = function(_, fn) W.timers = W.timers or {}; W.timers[#W.timers+1] = fn end }
 function RunTimers() local t = W.timers or {}; W.timers = {}; for _, fn in ipairs(t) do fn() end end

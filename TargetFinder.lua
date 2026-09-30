@@ -25,6 +25,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         ns.SetupMinimapButton()
+        ns.WatchQuestie()
         -- Rewrite on login so the macro always matches the saved list, even if it was edited by hand.
         if ns.TargetCount() > 0 then ns.WriteFinderMacro() end
         self:UnregisterEvent("PLAYER_LOGIN")

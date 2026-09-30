@@ -18,8 +18,8 @@ local function canAssistUnit(unit, name)
     local token = unit or name
     if not token then return false end
 
-    -- UnitIsUnit and UnitInRaid return secret booleans while a unit-identity restriction is active, and testing one raises in tainted code. Checking first costs the Assist entry inside restricted content, which is the right trade against an error in Blizzard's menu.
-    if ns.IdentitySecret(token) then return false end
+    -- UnitIsUnit and UnitInRaid return secret booleans under a comparison or identity restriction, and testing one raises in tainted code. Checking first costs the Assist entry inside restricted content, which is the right trade against an error in Blizzard's menu.
+    if ns.IdentitySecret(token) or ns.ComparisonSecret(token, "player") then return false end
 
     if UnitIsUnit(token, "player") then return false end
     if not UnitIsPlayer(token) then return false end

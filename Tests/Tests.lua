@@ -105,6 +105,7 @@ ns.ApplyMarkerFromTarget()
 check("unrelated target untouched", W.marks["target"] == nil)
 
 section("one raid marker goes to one unit")
+W.nilChecks = 0
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Kobold")
 W.units = { nameplate1 = {name="Kobold Laborer"}, nameplate2 = {name="Kobold Miner"}, nameplate3 = {name="Angry Kobold"} }
@@ -146,6 +147,31 @@ W.units = { target = {name="Ragged Young Wolf"} }
 W.marks = {}
 ns.SetSlot(3, "Kobold")
 check("unrelated target left unmarked", W.marks["target"] == nil, W.marks["target"])
+check("unmarked units never hand canaccessvalue a nil", W.nilChecks == 0, W.nilChecks)
+
+section("a hidden marker index only marks the target")
+W.secretsOn = true
+W.markersSecret = true
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Kobold")
+W.units = { nameplate1 = {name="Kobold Laborer"}, nameplate2 = {name="Kobold Miner"} }
+W.marks = { nameplate2 = 8 }
+n = ns.MarkNearbyForSlot(1)
+check("nameplate scan skipped", n == 0 and W.marks["nameplate2"] == 8 and W.marks["nameplate1"] == nil, n)
+W.units.target = { name = "Kobold Laborer" }
+n = ns.MarkNearbyForSlot(1)
+check("the matching target still takes the marker", n == 1 and W.marks["target"] == 8, n)
+local realGetTime = GetTime
+local frozen = (W.clock or 0) + 1000
+GetTime = function() return frozen end
+W.markCalls = 0
+ns.ApplyMarkerFromTarget()
+ns.ApplyMarkerFromTarget()
+check("the throttle still limits re-sends", W.markCalls == 1, W.markCalls)
+GetTime = realGetTime
+W.clock = frozen + 100
+W.secretsOn = false
+W.markersSecret = false
 
 section("secret identity guard")
 W.units = { target = { name = "Someone", player = true, friend = true, party = true, secret = true } }
@@ -163,6 +189,8 @@ check("a raising check reads as not accessible", answer == false, answer)
 check("the name is withheld instead", ns.ReadableName("target") == nil)
 canaccessvalue = realCanAccess
 check("a plain value stays accessible", ns.CanAccess("Someone") == true)
+W.nilChecks = 0
+check("nil is answered without calling canaccessvalue", ns.CanAccess(nil) == true and W.nilChecks == 0, W.nilChecks)
 
 section("unit menu resolves the name from the unit, not context.name")
 local root = {
@@ -238,6 +266,17 @@ local hasAssist = false
 for _, it in ipairs(root.items) do if it.text == "Assist" then hasAssist = true end end
 check("Assist withheld while identity is secret", not hasAssist)
 
+section("Assist waits out a comparison restriction")
+root.items = {}
+W.units = { party1 = { name = "Buddy", player = true, friend = true, party = true, comparisonSecret = true } }
+local cmpOk, cmpErr = pcall(function()
+    W.menuHooks["MENU_UNIT_PARTY"](nil, root, { unit = "party1", name = "Buddy" })
+end)
+check("menu builds without comparing units", cmpOk, cmpErr)
+local cmpAssist = false
+for _, it in ipairs(root.items) do if it.text == "Assist" then cmpAssist = true end end
+check("Assist withheld while comparison is secret", not cmpAssist)
+
 section("Assist for a real group member")
 root.items = {}
 W.units = { party1 = { name = "Buddy", player = true, friend = true, party = true } }
@@ -249,28 +288,38 @@ if assistFn then assistFn(); RunTimers() end
 check("ASSIST macro body", W.macros["ASSIST"] and W.macros["ASSIST"].body == "/assist Buddy",
       W.macros["ASSIST"] and W.macros["ASSIST"].body)
 
-section("Questie readiness")
+section("Questie readiness follows Questie.API.isReady")
 check("absent Questie reports not loaded", ns.QuestieReady() == false)
 check("excuse names absence", ns.QuestieExcuse() == "Questie is not loaded.", ns.QuestieExcuse())
--- Questie present but QuestieDB:Initialize has not run yet
-_G.QuestieLoader = { ImportModule = function(_, m)
-    if m == "QuestieDB" then return { NPCPointers = {} } end
-    return {}
-end }
-check("module present but queries nil is not ready", ns.QuestieReady() == false)
-check("excuse names the loading state", ns.QuestieExcuse() == "Questie is still loading.", ns.QuestieExcuse())
--- Questie 12 binds the queries at file load but NPCPointers only in QuestieDB.Initialize
+-- the database is complete, but Questie has not finished its init
 local noop = function() end
+local earlyDB = { QueryNPCSingle = noop, QueryQuestSingle = noop, QueryItemSingle = noop, NPCPointers = {} }
 _G.QuestieLoader = { ImportModule = function(_, m)
-    if m == "QuestieDB" then return { QueryNPCSingle = noop, QueryQuestSingle = noop, QueryItemSingle = noop } end
+    if m == "QuestieDB" then return earlyDB end
     return {}
 end }
-check("queries without NPCPointers is not ready", ns.QuestieReady() == false)
+_G.Questie = { API = { isReady = false, RegisterOnReady = function(cb) W.readyCallbacks[#W.readyCallbacks+1] = cb end } }
+check("a built database before isReady is not ready", ns.QuestieReady() == false)
+check("excuse names the loading state", ns.QuestieExcuse() == "Questie is still loading.", ns.QuestieExcuse())
 W.chat = {}
 ns.AddNearbyQuestNpcs()
 check("nearby add refuses cleanly while loading",
       W.chat[1] and W.chat[1]:match("still loading") ~= nil, W.chat[1])
+check("no suggestions while loading", #ns.FindSuggestions("kob") == 0)
+
+local login
+for f in pairs(_G.__frames) do if f.events["PLAYER_LOGIN"] then login = f end end
+login.scripts.OnEvent(login, "PLAYER_LOGIN")
+check("login registers for Questie's ready callback", #W.readyCallbacks == 1 and type(W.readyCallbacks[1]) == "function")
+
+_G.Questie.API.isReady = true
+earlyDB.NPCPointers = nil
+check("a reshaped database is not ready", ns.QuestieReady() == false)
+check("excuse names an unknown version", ns.QuestieExcuse() == "This Questie version is not supported.", ns.QuestieExcuse())
+_G.Questie = {}
+check("an emptied Questie table reads as absent", ns.QuestieExcuse() == "Questie is not loaded.", ns.QuestieExcuse())
 _G.QuestieLoader = nil
+_G.Questie = nil
 
 -- A small Questie world with the shapes the installed Questie 12.0.3 uses: quest objects in
 -- QuestiePlayer.currentQuestlog carrying ObjectiveData and Objectives[i].Completed.
@@ -297,11 +346,14 @@ local function fakeQuestie()
         },
         Objectives = { [1] = { Completed = true }, [2] = { Completed = false } },
     }
-    local state = { complete = 0 }
+    local state = { complete = 0, nameReads = 0 }
     local modules = {
         QuestieDB = {
             NPCPointers = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [6] = true, [7] = true },
-            QueryNPCSingle = function(id, key) local r = npcs[id]; return r and r[key] end,
+            QueryNPCSingle = function(id, key)
+                if key == "name" then state.nameReads = state.nameReads + 1 end
+                local r = npcs[id]; return r and r[key]
+            end,
             QueryQuestSingle = function(id, key) local r = quests[id]; return r and r[key] end,
             QueryItemSingle = function(id, key) local r = items[id]; return r and r[key] end,
             GetQuest = function(id) if id == 100 then return quest end end,
@@ -322,6 +374,7 @@ local function fakeQuestie()
         return modules[name]
     end }
     _G.Questie = {
+        API = { isReady = true },
         usedIcons = { [1] = "slay", [2] = "loot", [6] = "available" },
         ICON_TYPE_SLAY = 1, ICON_TYPE_LOOT = 2, ICON_TYPE_AVAILABLE = 6,
     }
@@ -353,6 +406,14 @@ quest.Objectives[2].Completed = false
 modules.QuestiePlayer.currentQuestlog[100] = 100
 check("a bare quest id falls back to the database object", namesOf(ns.QuestNpcs(100))["Kobold Miner"] ~= nil)
 modules.QuestiePlayer.currentQuestlog[100] = quest
+
+section("the NPC name index is built once Questie is ready")
+questState.nameReads = 0
+W.timers = {}
+W.readyCallbacks[1]()
+check("the ready callback defers the index pass", questState.nameReads == 0, questState.nameReads)
+RunTimers()
+check("the deferred pass reads every NPC name", questState.nameReads >= 7, questState.nameReads)
 
 section("nearby add follows Questie's quest state")
 C_Map.GetBestMapForUnit = function() return 1429 end
@@ -431,6 +492,12 @@ ns.RefreshPanel()
 check("an empty slot hides its marker", row1.icon.shown == false)
 panel.nearbyButton.scripts.OnEnter(panel.nearbyButton)
 check("nearby tooltip uses Blizzard's title helper", W.tooltip[1] == "title:Add Nearby Quest Units", W.tooltip[1])
+_G.Questie.API.isReady = false
+ns.RefreshPanel()
+check("Add Nearby is off while Questie loads", panel.nearbyButton.enabled == false)
+_G.Questie.API.isReady = true
+W.readyCallbacks[1]()
+check("Questie's ready callback turns Add Nearby on", panel.nearbyButton.enabled == true)
 
 section("suggestion popup mirrors Blizzard's AutoCompleteBox")
 local input = row1.input
@@ -473,10 +540,7 @@ _G.QuestieLoader = nil
 _G.Questie = nil
 
 section("launchers share one click and tooltip")
-local login
-for f in pairs(_G.__frames) do if f.events["PLAYER_LOGIN"] then login = f end end
-login.scripts.OnEvent(login, "PLAYER_LOGIN")
-check("LibDBIcon launcher registered", W.ldbObject ~= nil)
+check("LibDBIcon launcher registered at login", W.ldbObject ~= nil)
 W.ldbObject.OnTooltipShow(GameTooltip)
 local missing = false
 for _, l in ipairs(W.tooltip) do if l == "error:Questie is not loaded." then missing = true end end
