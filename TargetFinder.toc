@@ -24,9 +24,10 @@ Core\Markers.lua
 Core\Macro.lua
 Core\Targets.lua
 Core\Quest.lua
-Core\Suggestions.lua
-Core\Panel.lua
-Core\MinimapButton.lua
 Core\UnitMenu.lua
+
+UI\Suggestions.lua
+UI\Panel.lua
+UI\MinimapButton.lua
 
 TargetFinder.lua

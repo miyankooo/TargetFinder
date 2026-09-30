@@ -42,6 +42,13 @@ for raw in io.lines(here .. "../TargetFinder.toc") do
     if raw:match("%[AllowLoad") then tagged = true end
 end
 check("no per-line load tags", not tagged)
+local tocFiles = {}
+for raw in io.lines(here .. "../TargetFinder.toc") do
+    local line = raw:gsub("\r", "")
+    if line:match("%.lua$") then tocFiles[line] = true end
+end
+check("UI files live in UI/", tocFiles["UI\\Panel.lua"] and tocFiles["UI\\Suggestions.lua"] and tocFiles["UI\\MinimapButton.lua"])
+check("no UI file left in Core/", not (tocFiles["Core\\Panel.lua"] or tocFiles["Core\\Suggestions.lua"] or tocFiles["Core\\MinimapButton.lua"]))
 for _, key in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
     check(key .. " names a real global", toc[key] and type(_G[toc[key]]) == "function", toc[key])
 end
@@ -463,12 +470,23 @@ check("Questie icons resolve per kind", ns.QuestieKindIcons()[ns.KIND_KILL] == "
 section("panel is a native ButtonFrameTemplate window")
 ns.WipeTargets()
 ns.TogglePanel()
-local panel = _G.TargetFinderPanel
+local panel = _G.TargetFinderFrame
 check("built from ButtonFrameTemplate", panel and panel.template == "ButtonFrameTemplate", panel and panel.template)
-check("portrait hidden like AddonList", panel and panel.portraitHidden == true)
+check("portrait shows the toc icon", panel.portraitAsset == tonumber(toc["IconTexture"]), panel.portraitAsset)
+check("title is the spaced name only", panel.title == "Target Finder", panel.title)
+check("HIGH strata", panel.strata == "HIGH", panel.strata)
 local escapable = false
-for _, name in ipairs(UISpecialFrames) do if name == "TargetFinderPanel" then escapable = true end end
+for _, name in ipairs(UISpecialFrames) do if name == "TargetFinderFrame" then escapable = true end end
 check("Escape closes it", escapable)
+local nearby, clear = panel.nearbyButton, panel.clearButton
+check("bottom bar buttons are MagicButtonTemplate", nearby.template == "MagicButtonTemplate" and clear.template == "MagicButtonTemplate")
+local nearbyAnchor, clearAnchor = nearby.points[1], clear.points[1]
+check("primary action sits bottom-right with zero offsets",
+      nearbyAnchor.point == "BOTTOMRIGHT" and nearbyAnchor.rel == panel and not nearbyAnchor.x and not nearbyAnchor.y)
+check("Clear sits left of it with zero offsets",
+      clearAnchor.point == "RIGHT" and clearAnchor.rel == nearby and clearAnchor.relPoint == "LEFT" and not clearAnchor.x)
+check("MagicButton_OnLoad runs after each anchor", nearby.magicAnchors == 1 and clear.magicAnchors == 1,
+      tostring(nearby.magicAnchors) .. "/" .. tostring(clear.magicAnchors))
 local row1 = panel.rows[1]
 check("rows live in the Inset", row1.parent == panel.Inset)
 check("inputs use InputBoxTemplate", row1.input.template == "InputBoxTemplate", row1.input.template)
@@ -510,6 +528,8 @@ local firstRow = _G.TargetFinderSuggestionsButton1
 check("rows use AutoCompleteButtonTemplate", firstRow and firstRow.template == "AutoCompleteButtonTemplate",
       firstRow and firstRow.template)
 check("quest rows are labelled", firstRow and firstRow.text == "[Quest] Kobold Trouble", firstRow and firstRow.text)
+check("quest tags use Blizzard's grey", _G.TargetFinderSuggestionsButton2.text == "Kobold Miner |cff808080(Kobold Trouble)|r",
+      _G.TargetFinderSuggestionsButton2.text)
 check("no row preselected, so Enter keeps typed text", not firstRow.locked)
 input.scripts.OnArrowPressed(input, "DOWN")
 check("arrow down locks the first row's highlight", firstRow.locked == true)
@@ -541,6 +561,8 @@ _G.Questie = nil
 
 section("launchers share one click and tooltip")
 check("LibDBIcon launcher registered at login", W.ldbObject ~= nil)
+check("launcher icon is the toc icon", W.ldbObject.icon == tonumber(toc["IconTexture"]), W.ldbObject.icon)
+check("launcher is named after the addon", W.ldbObject.type == "launcher" and W.ldbObject.text == "Target Finder")
 W.ldbObject.OnTooltipShow(GameTooltip)
 local missing = false
 for _, l in ipairs(W.tooltip) do if l == "error:Questie is not loaded." then missing = true end end

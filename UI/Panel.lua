@@ -2,16 +2,12 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711): AddonList, MacroFrame and FriendsFrame inherit it. The dialog kit is for small popups, which eight editable rows are not. Layout follows AddonList: no portrait, attic text at 12,-30, action buttons 4px in from the bottom corners.
-local PANEL_NAME = "TargetFinderPanel"
+-- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), with MagicButtonTemplate buttons on its bottom bar. The dialog kit is for small popups, which eight editable rows are not.
+local PANEL_NAME = "TargetFinderFrame"
 local PANEL_WIDTH = 360
 
--- ButtonFrameTemplate puts the Inset 60px below the top (the attic) and 26px above the bottom (the button bar).
-local ATTIC_HEIGHT = 60
-local BUTTON_BAR_HEIGHT = 26
-local ATTIC_X = 12
-local ATTIC_Y = -30
-local BAR_INSET = 4
+-- The portrait is 62px wide and hangs 5px outside the frame (PortraitFrameBaseTemplate), so attic text starts just past it, level with the title.
+local ATTIC_LEFT = 60
 
 local ROW_HEIGHT = 24
 local ROW_PAD_X = 8
@@ -25,10 +21,11 @@ local INPUT_ART_OFFSET = 6
 local INPUT_HEIGHT = 20
 local ROW_BUTTON_SIZE = 24
 local ADD_BUTTON_WIDTH = 48
+local ADD_BUTTON_HEIGHT = 22
 
+-- MagicButtonTemplate is 80px wide, too narrow for these labels.
 local NEARBY_WIDTH = 176
 local CLEAR_WIDTH = 128
-local BUTTON_HEIGHT = 22
 
 local NEARBY_LABEL = "Add Nearby Quest Units"
 local NEARBY_HELP = "Replaces the list with the kill, loot and turn-in NPCs of your quests that are closest to you."
@@ -48,9 +45,7 @@ end
 
 -- Typing in a row and pressing Enter, clicking Add, or clearing the box and pressing Enter all land here.
 function ns.ApplyRowInput(slot)
-    if not panel or not panel.rows then return end
     local row = panel.rows[slot]
-    if not row then return end
     local input = row.input
     local typed = ns.Trim(input:GetText())
     local current = ns.targets[slot]
@@ -70,7 +65,7 @@ function ns.ApplyRowInput(slot)
         end
         input:ClearFocus()
         ns.HideSuggestions(input)
-        if row.updateState then row.updateState() end
+        row.updateState()
         return
     end
 
@@ -133,7 +128,7 @@ end
 -- Add is a plain UIPanelButtonTemplate and remove is Blizzard's own close button. NoScripts, because the stock close handler would hide the whole row.
 local function buildRowButtons(row, slot)
     local addBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    addBtn:SetSize(ADD_BUTTON_WIDTH, BUTTON_HEIGHT)
+    addBtn:SetSize(ADD_BUTTON_WIDTH, ADD_BUTTON_HEIGHT)
     addBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     addBtn:SetText(ADD)
     addBtn:SetScript("OnClick", function() ns.ApplyRowInput(slot) end)
@@ -187,10 +182,12 @@ local function showNearbyTooltip(button)
     GameTooltip:Show()
 end
 
+-- Buttons are anchored with zero offsets first, because MagicButton_OnLoad only turns zero-offset anchors into Blizzard's standard bar spacing (Mainline/SharedUIPanelTemplates.lua:12-46), and the template's own OnLoad ran before these buttons had any anchor. The primary action sits bottom-right.
 local function buildButtonBar(frame)
-    local nearbyButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    nearbyButton:SetSize(NEARBY_WIDTH, BUTTON_HEIGHT)
-    nearbyButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", BAR_INSET, BAR_INSET)
+    local nearbyButton = CreateFrame("Button", nil, frame, "MagicButtonTemplate")
+    nearbyButton:SetWidth(NEARBY_WIDTH)
+    nearbyButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT")
+    MagicButton_OnLoad(nearbyButton)
     nearbyButton:SetText(NEARBY_LABEL)
     nearbyButton:SetScript("OnClick", function() ns.AddNearbyQuestNpcs() end)
 
@@ -200,11 +197,24 @@ local function buildButtonBar(frame)
     nearbyButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     frame.nearbyButton = nearbyButton
 
-    local clearButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    clearButton:SetSize(CLEAR_WIDTH, BUTTON_HEIGHT)
-    clearButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -BAR_INSET, BAR_INSET)
+    local clearButton = CreateFrame("Button", nil, frame, "MagicButtonTemplate")
+    clearButton:SetWidth(CLEAR_WIDTH)
+    clearButton:SetPoint("RIGHT", nearbyButton, "LEFT")
+    MagicButton_OnLoad(clearButton)
     clearButton:SetText(CLEAR_LABEL)
     clearButton:SetScript("OnClick", function() ns.ClearFinder() end)
+    frame.clearButton = clearButton
+end
+
+-- Help text in the attic, the band between the title bar and the Inset, beside the portrait and centred on the band's height.
+local function buildAtticHelp(frame)
+    local atticMiddle = (PANEL_INSET_TOP_OFFSET + PANEL_INSET_ATTIC_OFFSET) / 2
+    local helper = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    helper:SetPoint("LEFT", frame, "TOPLEFT", ATTIC_LEFT, atticMiddle)
+    helper:SetPoint("RIGHT", frame, "TOPRIGHT", PANEL_INSET_RIGHT_OFFSET - ROW_PAD_X, atticMiddle)
+    helper:SetJustifyH("LEFT")
+    helper:SetWordWrap(true)
+    helper:SetText(PANEL_HELP)
 end
 
 -- Movable, clamped and toplevel like Blizzard's own windows; Escape closes it through UISpecialFrames, which needs the global name. It stays out of UIPanelWindows so the addon never drives Blizzard's panel layout, which is a taint source.
@@ -212,9 +222,10 @@ local function buildPanel()
     if panel then return panel end
 
     panel = CreateFrame("Frame", PANEL_NAME, UIParent, "ButtonFrameTemplate")
-    ButtonFrameTemplate_HidePortrait(panel)
+    panel:SetPortraitToAsset(ns.ADDON_ICON)
     panel:SetTitle(ns.ADDON_NAME)
-    panel:SetSize(PANEL_WIDTH, ATTIC_HEIGHT + ROW_PAD_Y * 2 + MAX_TARGETS * ROW_HEIGHT + BUTTON_BAR_HEIGHT)
+    local contentHeight = ROW_PAD_Y * 2 + MAX_TARGETS * ROW_HEIGHT
+    panel:SetSize(PANEL_WIDTH, -PANEL_INSET_ATTIC_OFFSET + contentHeight + PANEL_INSET_BOTTOM_BUTTON_OFFSET)
     panel:SetPoint("CENTER")
     panel:SetFrameStrata("HIGH")
     panel:SetToplevel(true)
@@ -234,12 +245,7 @@ local function buildPanel()
         return false
     end
 
-    local helper = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    helper:SetPoint("TOPLEFT", panel, "TOPLEFT", ATTIC_X, ATTIC_Y)
-    helper:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -ATTIC_X, ATTIC_Y)
-    helper:SetJustifyH("LEFT")
-    helper:SetWordWrap(true)
-    helper:SetText(PANEL_HELP)
+    buildAtticHelp(panel)
 
     panel.rows = {}
     for slot = 1, MAX_TARGETS do
@@ -252,9 +258,7 @@ end
 
 function ns.RefreshPanel()
     if not panel then return end
-    if panel.nearbyButton then
-        panel.nearbyButton:SetEnabled(ns.QuestieReady())
-    end
+    panel.nearbyButton:SetEnabled(ns.QuestieReady())
     for slot = 1, MAX_TARGETS do
         local row = panel.rows[slot]
         local entry = ns.targets[slot]

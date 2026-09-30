@@ -60,7 +60,7 @@ local function queueMacro(name, icon, body)
         pendingMacros[name] = { icon = icon, body = body }
         if not notifiedCombat then
             notifiedCombat = true
-            UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": leave combat to update macros.", 1.0, 0.1, 0.1)
+            UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": leave combat to update macros.", RED_FONT_COLOR:GetRGB())
         end
         return false
     end
@@ -149,9 +149,7 @@ local function focusMacro(absIndex)
     local relative = absIndex - (tabID == 1 and 0 or ACCOUNT_MACRO_CAP)
     MacroFrame:ChangeTab(tabID)
     MacroFrame:SelectMacro(relative, true)
-    if MacroFrame.SelectedMacroButton then
-        pulseGlow(MacroFrame.SelectedMacroButton)
-    end
+    pulseGlow(MacroFrame.SelectedMacroButton)
 end
 
 -- Open the macro book and pulse the macro, but only while it is still not on a bar, so the hint stops once the player has dragged it out.

@@ -55,7 +55,8 @@ local function questieStatus()
 end
 
 local function questieDB()
-    if questieStatus() ~= "ready" then return nil end
+    local api = questieApi()
+    if not api or api.isReady ~= true then return nil end
     return databaseModule()
 end
 

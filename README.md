@@ -30,12 +30,12 @@ There are no slash commands. Everything lives in the UI.
 
 ### Panel
 
-A standard Blizzard window (the same frame as the AddOns list). Drag it by the title bar, close it with Escape or the corner button.
+A standard Blizzard window with the addon icon as its portrait. Drag it by the title bar, close it with Escape or the corner button.
 
 - Each slot shows its raid marker, the tracked name and a close button to remove it.
 - While you type a new name, the close button turns into **Add**.
-- **Add Nearby Quest Units** replaces the list. Its tooltip says why when it is disabled.
-- **Clear Unit List** empties the list.
+- **Add Nearby Quest Units** (bottom right) replaces the list. Its tooltip says why when it is disabled.
+- **Clear Unit List** (next to it) empties the list.
 
 ### Suggestions
 
@@ -53,7 +53,7 @@ Suggestions open under the slot you type in, styled like Blizzard's own name aut
 - **Shift + left-click**: clear the unit list.
 - **Right-click**: add nearby quest units.
 
-The tooltip tells Questie being absent apart from Questie still loading its database, which fixes itself a few seconds after login.
+The tooltip tells Questie being absent apart from Questie still loading, which fixes itself a few seconds after login. The quest features switch on by themselves once Questie reports it is ready.
 
 ### Right-click unit menu
 
@@ -80,6 +80,8 @@ A raid marker sits on one unit at a time, so each slot marks exactly one:
 1. your current target, when its name belongs to that slot
 2. otherwise a visible nameplate that already carries the marker, so a marked mob keeps it
 3. otherwise the first matching nameplate
+
+When the client hides raid marker indexes from addons, only your current target is marked, so the marker never jumps off a mob that already has it.
 
 A unit belongs to the first slot whose name covers it, so `Kobold` in slot 1 and `Kobold Miner` in slot 2 never fight over one mob. The chat line after an add counts one unit per slot that found a match.
 
@@ -137,8 +139,9 @@ The offline suite loads the addon in toc order against a client stub and a small
 | `Core/Macro.lua` | FIND and ASSIST macros, combat queue, macro-book hint |
 | `Core/Targets.lua` | List changes |
 | `Core/Quest.lua` | Questie integration, the only quest data source |
-| `Core/Suggestions.lua` | The autocomplete popup |
-| `Core/Panel.lua` | The panel and its slot rows |
-| `Core/MinimapButton.lua` | Minimap button and addon-menu entry |
 | `Core/UnitMenu.lua` | Unit menu entries |
+| `UI/Suggestions.lua` | The autocomplete popup |
+| `UI/Panel.lua` | The panel and its slot rows |
+| `UI/MinimapButton.lua` | Minimap button and addon-menu entry |
+| `Libs/` | LibStub, CallbackHandler-1.0, LibDataBroker-1.1 and LibDBIcon-1.0 for the minimap button |
 | `.pkgmeta` | Packaging; leaves `Tests` and `MEMORY.md` out |
