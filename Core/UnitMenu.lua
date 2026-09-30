@@ -18,7 +18,7 @@ local function canAssistUnit(unit, name)
     local token = unit or name
     if not token then return false end
 
-    -- On 1.60 UnitIsUnit and UnitInRaid return secret booleans while a unit-identity restriction is active, and testing one raises in tainted code. Checking first costs the Assist entry inside restricted content, which is the right trade against an error in Blizzard's menu.
+    -- UnitIsUnit and UnitInRaid return secret booleans while a unit-identity restriction is active, and testing one raises in tainted code. Checking first costs the Assist entry inside restricted content, which is the right trade against an error in Blizzard's menu.
     if ns.IdentitySecret(token) then return false end
 
     if UnitIsUnit(token, "player") then return false end
@@ -27,7 +27,7 @@ local function canAssistUnit(unit, name)
     return UnitInParty(token) or UnitInRaid(token)
 end
 
--- Blizzard fills contextData.name with the RAID_TARGET_ICON string for NPC target menus on both clients, so the unit token is the only trustworthy source of a name. context.name is kept as the fallback for menus that carry no unit, such as the friends list and chat.
+-- Blizzard fills contextData.name with the RAID_TARGET_ICON string for NPC target menus, so the unit token is the only trustworthy source of a name. context.name is kept as the fallback for menus that carry no unit, such as the friends list and chat.
 local function menuName(context)
     local name
     if context.unit then name = ns.ReadableName(context.unit) end
@@ -73,9 +73,7 @@ local function appendMenu(_, root, context)
     end
 end
 
--- Guarded because older 1.15.x builds predate the Menu system; the menu is simply absent there rather than erroring.
 function ns.RegisterUnitMenus()
-    if not Menu or not Menu.ModifyMenu then return end
     for _, tag in ipairs(UNIT_MENU_TAGS) do
         Menu.ModifyMenu(tag, appendMenu)
     end

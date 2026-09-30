@@ -3,8 +3,12 @@ local _, ns = ...
 local MAX_TARGETS = ns.MAX_TARGETS
 local MACRO_LIMIT = 255
 local GLOW_SECONDS = 4
+local ACCOUNT_MACRO_CAP = Constants.MacroConsts.MAX_ACCOUNT_MACROS
 
--- Write the macro, then read the index back instead of trusting a return value. CreateMacro is a C function with no generated documentation on either branch, and at the 120 account-macro cap it fails without telling the caller; the read-back settles it the same way on both clients.
+-- Bars 1-6 fill slots 1-72 and MultiBar5-7 add 145-180. An unused slot simply reads back nil.
+local ACTION_SLOT_COUNT = 180
+
+-- Write the macro, then read the index back instead of trusting a return value. CreateMacro is a C function with no generated documentation, and at the account-macro cap it fails without telling the caller; the read-back settles it.
 local function setMacro(name, icon, body)
     local index = GetMacroIndexByName(name)
     if index and index > 0 then
@@ -47,7 +51,7 @@ local function warnMacroCap(name)
     if capWarned then return end
     capWarned = true
     ns.Announce("Could not write the " .. name .. " macro. The account macro list is full ("
-        .. ns.AccountMacroCap() .. "); delete one and try again.")
+        .. ACCOUNT_MACRO_CAP .. "); delete one and try again.")
 end
 
 -- Returns true when the macro was written, false when combat deferred it or the cap refused it.
@@ -56,9 +60,7 @@ local function queueMacro(name, icon, body)
         pendingMacros[name] = { icon = icon, body = body }
         if not notifiedCombat then
             notifiedCombat = true
-            if UIErrorsFrame then
-                UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": leave combat to update macros.", 1.0, 0.1, 0.1)
-            end
+            UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": leave combat to update macros.", 1.0, 0.1, 0.1)
         end
         return false
     end
@@ -80,18 +82,18 @@ combatFrame:SetScript("OnEvent", function()
     for name, macro in pairs(queued) do
         if not setMacro(name, macro.icon, macro.body) then warnMacroCap(name) end
     end
-    if ns.RefreshPanel then ns.RefreshPanel() end
+    ns.RefreshPanel()
 end)
 
 -- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table.
 function ns.WriteFinderMacro()
     queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody())
-    if ns.RefreshPanel then ns.RefreshPanel() end
+    ns.RefreshPanel()
 end
 
 local function isMacroOnBar(absIndex)
     if not absIndex or absIndex == 0 then return false end
-    for slot = 1, ns.ACTION_SLOT_COUNT do
+    for slot = 1, ACTION_SLOT_COUNT do
         local kind, id = GetActionInfo(slot)
         if kind == "macro" and id == absIndex then return true end
     end
@@ -143,10 +145,8 @@ end
 
 -- SelectMacro's index is relative to the selected tab, so an account macro past the cap belongs to tab 2.
 local function focusMacro(absIndex)
-    if not MacroFrame then return end
-    local accountCap = ns.AccountMacroCap()
-    local tabID = absIndex <= accountCap and 1 or 2
-    local relative = absIndex - (tabID == 1 and 0 or accountCap)
+    local tabID = absIndex <= ACCOUNT_MACRO_CAP and 1 or 2
+    local relative = absIndex - (tabID == 1 and 0 or ACCOUNT_MACRO_CAP)
     MacroFrame:ChangeTab(tabID)
     MacroFrame:SelectMacro(relative, true)
     if MacroFrame.SelectedMacroButton then
@@ -161,12 +161,9 @@ function ns.HintMacro(name)
     if not absIndex or absIndex == 0 then return end
     if isMacroOnBar(absIndex) then return end
 
+    -- ShowMacroFrame loads Blizzard_MacroUI synchronously; MacroFrame is only missing when that load failed.
     ShowMacroFrame()
-    if MacroFrame then
-        focusMacro(absIndex)
-    else
-        C_Timer.After(0, function() focusMacro(absIndex) end)
-    end
+    if MacroFrame then focusMacro(absIndex) end
 end
 
 function ns.SetAssistTarget(name)

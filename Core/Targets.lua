@@ -3,9 +3,9 @@ local _, ns = ...
 local MAX_TARGETS = ns.MAX_TARGETS
 
 -- Every mutation ends the same way: write the macro, give each new slot's marker to one unit in view (the target when it matches, see Markers.lua), report what happened, and offer the macro book while FIND is still unbound.
-local function reportAdded(names, marked)
+local function reportChange(text, marked)
     local suffix = marked > 0 and " — " .. marked .. " marked" or ""
-    ns.Announce(table.concat(names, ", ") .. suffix)
+    ns.Announce(text .. suffix)
     ns.HintMacro(ns.FIND_MACRO)
 end
 
@@ -25,7 +25,7 @@ function ns.AddFinder(name, kind)
     end
     ns.targets[slot] = ns.MakeEntry(name, kind)
     ns.WriteFinderMacro()
-    reportAdded(ns.EntryNames(), ns.MarkNearbyForSlot(slot))
+    reportChange(table.concat(ns.EntryNames(), ", "), ns.MarkNearbyForSlot(slot))
 end
 
 -- Insert at slot 1 so the macro's last /target line wins. Everything else shifts down one slot and a full list drops its lowest-priority entry off the end.
@@ -59,7 +59,7 @@ function ns.AddFinderFirst(name, kind, existingSlot)
     local dropped = kept[MAX_TARGETS]
 
     ns.WriteFinderMacro()
-    reportAdded(ns.EntryNames(), ns.RemarkAllSlots())
+    reportChange(table.concat(ns.EntryNames(), ", "), ns.RemarkAllSlots())
 
     if dropped then
         ns.Announce("List was full, dropped " .. dropped.name .. ".")
@@ -101,7 +101,7 @@ function ns.AddFinderBatch(items)
     for _, slot in ipairs(newSlots) do
         marked = marked + ns.MarkNearbyForSlot(slot)
     end
-    reportAdded(added, marked)
+    reportChange(table.concat(added, ", "), marked)
 end
 
 -- Replace the whole list in one step. Wiping and then adding separately would leave the list empty and the macro stale if the add found nothing to do.
@@ -143,12 +143,6 @@ function ns.SetSlot(slot, name)
     local previous = ns.targets[slot]
     ns.targets[slot] = ns.MakeEntry(name)
     ns.WriteFinderMacro()
-    local marked = ns.MarkNearbyForSlot(slot)
-    local suffix = marked > 0 and " — " .. marked .. " marked" or ""
-    if previous then
-        ns.Announce("Replaced " .. previous.name .. " with " .. name .. suffix)
-    else
-        ns.Announce(name .. suffix)
-    end
-    ns.HintMacro(ns.FIND_MACRO)
+    local text = previous and ("Replaced " .. previous.name .. " with " .. name) or name
+    reportChange(text, ns.MarkNearbyForSlot(slot))
 end

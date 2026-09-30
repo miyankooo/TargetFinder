@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Shared constants and the addon's one chat voice. Everything here is client-independent; version differences live in Client.lua.
+-- Shared constants and the addon's one chat voice.
 
 ns.ADDON_NAME = "Target Finder"
 
@@ -13,17 +13,18 @@ ns.MAX_TARGETS = 8
 ns.MAX_SUGGESTIONS = 8
 ns.MIN_QUERY_LENGTH = 2
 
+-- The documented nameplate token range. Tokens only resolve while a nameplate is actually shown.
+ns.MAX_NAMEPLATES = 40
+
 -- Slot order is priority order, and each slot owns one raid marker for its whole life so a marked mob keeps meaning the same thing.
 ns.FIND_MARKERS = { 8, 6, 2, 1, 7, 4, 3, 5 }
 
--- Ascending value is ascending priority, so a lower number wins when two quests claim the same NPC.
+-- Ascending value is ascending priority, so a lower number wins when two quests claim the same NPC. Every saved entry stores its kind, so the values never renumber.
 --   KILL  mobs that count for a kill objective
 --   DROP  mobs that drop a required quest item
---   ASSOC mobs the quest otherwise references, such as talk or escort targets
 --   GIVER quest start and turn-in NPCs
 ns.KIND_KILL = 1
 ns.KIND_DROP = 2
-ns.KIND_ASSOC = 3
 ns.KIND_GIVER = 4
 
 -- Mirror the FIND macro icon so the minimap button reads as the same action.

@@ -120,7 +120,7 @@ function CreateFrame(kind, name, parent, template)
     if kind == "Button" then
         f.SetText = function(self, v) self.text = v; return self end
     end
-    -- ButtonFrameTemplate hands its content well out as .Inset on both clients
+    -- ButtonFrameTemplate hands its content well out as .Inset
     if template == "ButtonFrameTemplate" then
         f.Inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
     end
@@ -181,7 +181,6 @@ function RunTimers() local t = W.timers or {}; W.timers = {}; for _, fn in ipair
 C_QuestLog = { GetQuestObjectives = function() error("native quest log read") end }
 C_Map = { GetBestMapForUnit = function() return nil end }
 Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }
-MAX_ACCOUNT_MACROS = nil
 UNKNOWN = "Unknown"
 UIParent = CreateFrame("Frame")
 UISpecialFrames = {}
