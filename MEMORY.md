@@ -161,3 +161,7 @@ Forever checks:
 ## Launchers (owner decision 2026-09-30)
 
 - `/tf` and `/targetfinder` toggle the panel through `ns.TogglePanel` (`UI/Panel.lua`), the same toggle the minimap button and the Addon Compartment use, registered with `UI.RegisterSlash`. No Blizzard or installed addon uses either command. The test harness stubs `SlashCmdList` and checks the registration.
+
+## LibNativeUI-1.0 version
+
+- The embedded copy is MINOR 2, byte-identical in ChatScan, QuestieGuide and TargetFinder; the reference copy is `ChatScan/Libs/LibNativeUI-1.0/`. MINOR 2 moves `UI.CreateSearchBox`'s typed text and hint from the template's 10px fonts to the 12px body and muted roles, keeping the template's hint grey.
