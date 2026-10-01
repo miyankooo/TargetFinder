@@ -1,6 +1,7 @@
 local _, ns = ...
+local UI = LibStub("LibNativeUI-1.0")
 
--- Two launchers share one click and one tooltip: the LibDBIcon minimap button and the Addon Compartment, which calls the globals the toc names.
+-- One launcher serves the LibDBIcon minimap button and the Addon Compartment entry LibDBIcon registers, so both share this click and this tooltip.
 
 local function onLauncherClick(mouseButton)
     if mouseButton == "LeftButton" then
@@ -14,9 +15,8 @@ local function onLauncherClick(mouseButton)
     end
 end
 
--- Blizzard's tooltip helpers give the launcher tooltip the standard colours: white title, green instructions, red for what is missing.
+-- Blizzard's tooltip helpers give the lines under the launcher's title the standard colours: green instructions, red for what is missing.
 local function fillLauncherTooltip(tooltip)
-    GameTooltip_SetTitle(tooltip, ns.ADDON_NAME)
     GameTooltip_AddInstructionLine(tooltip, "Left-click to toggle the panel.")
     GameTooltip_AddInstructionLine(tooltip, "Shift + left-click to clear the unit list.")
     if ns.QuestieReady() then
@@ -28,32 +28,11 @@ local function fillLauncherTooltip(tooltip)
 end
 
 function ns.SetupMinimapButton()
-    local LDB = LibStub("LibDataBroker-1.1")
-    local LDBIcon = LibStub("LibDBIcon-1.0")
-    if LDBIcon:IsRegistered(ns.ADDON_NAME) then return end
-
-    local dataObject = LDB:NewDataObject(ns.ADDON_NAME, {
-        type = "launcher",
-        text = ns.ADDON_NAME,
+    UI.CreateLauncher({
+        title = ns.ADDON_NAME,
         icon = ns.ADDON_ICON,
-        OnClick = function(_, mouseButton) onLauncherClick(mouseButton) end,
-        OnTooltipShow = fillLauncherTooltip,
+        db = TargetFinderDB.minimap,
+        onClick = onLauncherClick,
+        tooltip = fillLauncherTooltip,
     })
-
-    LDBIcon:Register(ns.ADDON_NAME, dataObject, TargetFinderDB.minimap)
-end
-
--- Addon Compartment entry points named in the toc. Blizzard calls them with the addon name first, then the mouse button or the menu row.
-function TargetFinder_OnClick(_, mouseButton)
-    onLauncherClick(mouseButton)
-end
-
-function TargetFinder_OnEnter(_, menuButton)
-    GameTooltip:SetOwner(menuButton, "ANCHOR_LEFT")
-    fillLauncherTooltip(GameTooltip)
-    GameTooltip:Show()
-end
-
-function TargetFinder_OnLeave()
-    GameTooltip:Hide()
 end

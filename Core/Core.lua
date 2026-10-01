@@ -1,4 +1,5 @@
 local _, ns = ...
+local UI = LibStub("LibNativeUI-1.0")
 
 -- Shared constants and the addon's one chat voice.
 
@@ -31,9 +32,9 @@ ns.KIND_GIVER = 4
 ns.ADDON_ICON = 132212
 ns.MINIMAP_DEFAULT_POS = 215
 
--- One tagged line per user-visible event, so the addon never writes to chat by any other route.
+-- One tagged line per user-visible event in the shared chat voice, so the addon never writes to chat by any other route.
 function ns.Announce(msg)
-    print(YELLOW_FONT_COLOR:WrapTextInColorCode("[" .. ns.ADDON_NAME .. "]:") .. " " .. msg)
+    UI.Print(ns.ADDON_NAME, msg)
 end
 
 function ns.Trim(value)

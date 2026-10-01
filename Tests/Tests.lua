@@ -42,16 +42,27 @@ for raw in io.lines(here .. "../TargetFinder.toc") do
     if raw:match("%[AllowLoad") then tagged = true end
 end
 check("no per-line load tags", not tagged)
-local tocFiles = {}
+local tocFiles, tocOrder = {}, {}
 for raw in io.lines(here .. "../TargetFinder.toc") do
     local line = raw:gsub("\r", "")
-    if line:match("%.lua$") then tocFiles[line] = true end
+    if line:match("%.lua$") then
+        tocFiles[line] = true
+        tocOrder[#tocOrder+1] = line
+    end
 end
 check("UI files live in UI/", tocFiles["UI\\Panel.lua"] and tocFiles["UI\\Suggestions.lua"] and tocFiles["UI\\MinimapButton.lua"])
 check("no UI file left in Core/", not (tocFiles["Core\\Panel.lua"] or tocFiles["Core\\Suggestions.lua"] or tocFiles["Core\\MinimapButton.lua"]))
-for _, key in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
-    check(key .. " names a real global", toc[key] and type(_G[toc[key]]) == "function", toc[key])
+local dbIconAt
+for i, line in ipairs(tocOrder) do
+    if line == "Libs\\LibDBIcon-1.0\\LibDBIcon-1.0.lua" then dbIconAt = i end
 end
+check("LibNativeUI loads right after LibDBIcon", dbIconAt and tocOrder[dbIconAt + 1] == "Libs\\LibNativeUI-1.0\\LibNativeUI-1.0.lua",
+      dbIconAt and tocOrder[dbIconAt + 1])
+-- LibDBIcon registers the addon menu entry itself, so toc entry points would list the addon twice
+for _, key in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
+    check("no toc " .. key, toc[key] == nil, toc[key])
+end
+check("no compartment globals left", TargetFinder_OnClick == nil and TargetFinder_OnEnter == nil and TargetFinder_OnLeave == nil)
 
 section("boot and saved variables")
 check("minimap defaults created", TargetFinderDB.minimap.minimapPos == 215)
@@ -468,9 +479,12 @@ check("plain database NPCs follow", plain ~= nil and not plain.isQuestNpc)
 check("Questie icons resolve per kind", ns.QuestieKindIcons()[ns.KIND_KILL] == "slay")
 
 section("panel is a native ButtonFrameTemplate window")
+local UI = LibStub("LibNativeUI-1.0")
+local function onGrid(v) return v % UI.GRID == 0 end
 ns.WipeTargets()
 ns.TogglePanel()
 local panel = _G.TargetFinderFrame
+check("the toggle opens the panel", panel and panel.shown == true)
 check("built from ButtonFrameTemplate", panel and panel.template == "ButtonFrameTemplate", panel and panel.template)
 check("portrait shows the toc icon", panel.portraitAsset == tonumber(toc["IconTexture"]), panel.portraitAsset)
 check("title is the spaced name only", panel.title == "Target Finder", panel.title)
@@ -489,6 +503,10 @@ check("MagicButton_OnLoad runs after each anchor", nearby.magicAnchors == 1 and 
       tostring(nearby.magicAnchors) .. "/" .. tostring(clear.magicAnchors))
 local row1 = panel.rows[1]
 check("rows live in the Inset", row1.parent == panel.Inset)
+local rowAnchor = row1.points[1]
+check("rows are padded on the grid", rowAnchor.x == UI.Space.padding and rowAnchor.y == -UI.Space.padding, rowAnchor.x)
+check("panel width is on the grid", panel.width and onGrid(panel.width), panel.width)
+check("inputs use the 12px body font", row1.input.fontObject == UI.Font.body, row1.input.fontObject and row1.input.fontObject.name)
 check("inputs use InputBoxTemplate", row1.input.template == "InputBoxTemplate", row1.input.template)
 check("remove is the client's close button without its hide script", row1.removeBtn.template == "UIPanelCloseButtonNoScripts",
       row1.removeBtn.template)
@@ -523,6 +541,7 @@ input:SetText("kob")
 input.scripts.OnTextChanged(input, true)
 local pop = _G.TargetFinderSuggestions
 check("one shared popup on TooltipBackdropTemplate", pop and pop.template == "TooltipBackdropTemplate", pop and pop.template)
+check("popup sits on the dialog strata above the panel", pop.strata == UI.Strata.dialog, pop.strata)
 check("popup shown for the typing row", pop and pop.shown == true and pop.owner == input)
 local firstRow = _G.TargetFinderSuggestionsButton1
 check("rows use AutoCompleteButtonTemplate", firstRow and firstRow.template == "AutoCompleteButtonTemplate",
@@ -567,14 +586,18 @@ W.ldbObject.OnTooltipShow(GameTooltip)
 local missing = false
 for _, l in ipairs(W.tooltip) do if l == "error:Questie is not loaded." then missing = true end end
 check("minimap tooltip names what is missing", W.tooltip[1] == "title:Target Finder" and missing, table.concat(W.tooltip, " / "))
-TargetFinder_OnEnter("TargetFinder", UIParent)
-check("compartment tooltip is the same tooltip", W.tooltip[1] == "title:Target Finder")
+local entries = {}
+for _, data in ipairs(AddonCompartmentFrame.registeredAddons) do
+    if data.text == "Target Finder" then entries[#entries+1] = data end
+end
+check("the addon menu lists the addon once", #entries == 1, #entries)
+local entry = entries[1]
 local wasShown = panel.shown
-TargetFinder_OnClick("TargetFinder", "LeftButton")
-check("compartment left-click toggles the panel", panel.shown ~= wasShown)
+entry.func(nil, { buttonName = "LeftButton" })
+check("addon menu left-click toggles the panel", panel.shown ~= wasShown)
 W.chat = {}
-TargetFinder_OnClick("TargetFinder", "RightButton")
-check("compartment right-click adds nearby units", chatHas("Questie is not loaded"), table.concat(W.chat, " / "))
+entry.func(nil, { buttonName = "RightButton" })
+check("addon menu right-click adds nearby units", chatHas("Questie is not loaded"), table.concat(W.chat, " / "))
 
 section("combat defers the macro write")
 ns.WipeTargets()

@@ -2,7 +2,7 @@
 
 Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; a plain manual list when it isn't.
 
-Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own templates.
+Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own templates, laid out by the shared LibNativeUI-1.0 design system on an 8 px grid with 12 px text.
 
 ## Features
 
@@ -26,7 +26,7 @@ Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own
 3. The addon opens the macro book and pulses **FIND** until it is on a bar. Drag it onto your action bar.
 4. Press FIND to target and mark. Press it again to move to the next NPC.
 
-There are no slash commands. Everything lives in the UI.
+`/tf` and `/targetfinder` toggle the panel. Everything else lives in the UI.
 
 ### Panel
 
@@ -48,6 +48,8 @@ Suggestions open under the slot you type in, styled like Blizzard's own name aut
 - Names that start with what you typed come before names that only contain it, because only the first kind is something FIND can acquire.
 
 ### Minimap button and addon menu
+
+The minimap button and its entry in the addon menu are one launcher, so they share the clicks and the tooltip.
 
 - **Left-click**: toggle the panel.
 - **Shift + left-click**: clear the unit list.
@@ -130,9 +132,9 @@ The offline suite loads the addon in toc order against a client stub and a small
 
 | Path | Holds |
 | --- | --- |
-| `TargetFinder.toc` | `## Interface: 16001`, plus the addon-menu entry points |
+| `TargetFinder.toc` | `## Interface: 16001` and the load order |
 | `TargetFinder.lua` | Bootstrap: saved variables and the three events |
-| `Core/Core.lua` | Shared constants and the chat line |
+| `Core/Core.lua` | Shared constants and the chat line, through LibNativeUI's `UI.Print` |
 | `Core/Secrets.lua` | Guards for unit names and identities the client may hide |
 | `Core/Store.lua` | The slot table, the name rule, saved-variable adoption |
 | `Core/Markers.lua` | Raid markers, one unit per marker |
@@ -142,6 +144,6 @@ The offline suite loads the addon in toc order against a client stub and a small
 | `Core/UnitMenu.lua` | Unit menu entries |
 | `UI/Suggestions.lua` | The autocomplete popup |
 | `UI/Panel.lua` | The panel and its slot rows |
-| `UI/MinimapButton.lua` | Minimap button and addon-menu entry |
-| `Libs/` | LibStub, CallbackHandler-1.0, LibDataBroker-1.1 and LibDBIcon-1.0 for the minimap button |
+| `UI/MinimapButton.lua` | The launcher: minimap button and addon-menu entry |
+| `Libs/` | LibStub, CallbackHandler-1.0, LibDataBroker-1.1 and LibDBIcon-1.0 for the minimap button and addon menu, and LibNativeUI-1.0, the shared design system the window, launcher and slash command are built from |
 | `.pkgmeta` | Packaging; leaves `Tests` and `MEMORY.md` out |

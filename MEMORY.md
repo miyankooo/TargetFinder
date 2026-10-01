@@ -1,6 +1,6 @@
 # TargetFinder — Memory
 
-Updated 2026-09-30 after the Forever-only rework (4.0.0). The owner's decision is WoW Forever 1.60.x only: `main` holds only the Forever version, and `1.15.x-backup` keeps the dual-client 3.2.0 with all Classic code. Quest data still comes only from Questie. This supersedes the 2026-09-25 decision that every addon supports both clients.
+Updated 2026-10-01 after adopting the shared design system LibNativeUI-1.0 (still 4.0.0); before that, 2026-09-30 after the Forever-only rework (4.0.0). The owner's decision is WoW Forever 1.60.x only: `main` holds only the Forever version, and `1.15.x-backup` keeps the dual-client 3.2.0 with all Classic code. Quest data still comes only from Questie. This supersedes the 2026-09-25 decision that every addon supports both clients.
 
 Verified against:
 
@@ -9,7 +9,7 @@ Verified against:
 - the installed client 1.60.1.70009
 - the installed Questie 12.0.3 (`Questie_Camelot.toc`) and QuestieDB 1.0.4
 
-Nothing has run in a client. On 2026-09-30, `cd Tests && lua Tests.lua` passed 165 of 165 (Lua 5.5), which proves logic and wiring, not client behaviour. `luac -p` passes on every Lua file.
+Nothing has run in a client. On 2026-10-01, `cd Tests && lua Tests.lua` passed 174 of 174 (Lua 5.5), which proves logic and wiring, not client behaviour. `luac -p` passes on every Lua file.
 
 ## Current state
 
@@ -19,14 +19,14 @@ It also has:
 
 - A panel with Questie autocomplete and "Add Nearby Quest Units" quick add.
 - Unit-menu entries: Assist, Track First, Track, Untrack and Clear.
-- A minimap button (LibDBIcon) plus the Addon Compartment.
+- One launcher: the LibDBIcon minimap button, whose Addon Compartment entry LibDBIcon registers itself.
 - Macro writes that wait until combat ends.
 
 | Item | State |
 |---|---|
-| Version | 4.0.0. Toc: `## Interface: 16001`, `## Category: Combat`, `## IconTexture: 132212`, `## Author: miyanko`, `OptionalDeps: Questie`, Addon Compartment fields. `.pkgmeta` ignores `Tests` and `MEMORY.md`, no externals |
+| Version | 4.0.0. Toc: `## Interface: 16001`, `## Category: Combat`, `## IconTexture: 132212`, `## Author: miyanko`, `OptionalDeps: Questie`. No `## AddonCompartmentFunc*` fields since the design-system commit. `.pkgmeta` ignores `Tests` and `MEMORY.md`, no externals |
 | Git | `main` has three local commits on top of `7ad99db`, not pushed: `c3a1ac5` (split and cleanup), `2dc8878` (fixes), then the UI commit. `1.15.x-backup` = `origin/1.15.x-backup` = `7ad99db` (dual-client 3.2.0), created by the lead. `core.hooksPath` is unset |
-| Layout | `TargetFinder.lua` (bootstrap), `Core/` (Core, Secrets, Store, Markers, Macro, Targets, Quest, UnitMenu), `UI/` (Suggestions, Panel, MinimapButton), `Libs/` (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0, tracked, unedited), `Tests/` |
+| Layout | `TargetFinder.lua` (bootstrap), `Core/` (Core, Secrets, Store, Markers, Macro, Targets, Quest, UnitMenu), `UI/` (Suggestions, Panel, MinimapButton), `Libs/` (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0, LibNativeUI-1.0, tracked, unedited), `Tests/` |
 | Lua lines | Addon code (no libs, no tests) 1,754 before, 1,767 after. Tests 771 before, 915 after. About 70 Classic and dead lines went; the fixes and the UI spec added about 80 |
 
 Quest data comes only from Questie, through `Core/Quest.lua`:
@@ -47,17 +47,26 @@ Secret values, in `Core/Secrets.lua` and `Core/Markers.lua`:
 - When `GetRaidTargetIndex` is hidden, only the target is marked. The nameplate scan returns no unit, because the mob already carrying the marker can't be found. The 0.15 s throttle still limits target re-sends.
 - `SetRaidTarget` sets, it doesn't toggle. Blizzard toggles by hand (`Mainline/TargetFrame.lua:694-699`, `SecureTemplates.lua:596-601`), so re-sending the same index is harmless.
 
-Native UI (shared spec):
+Native UI, built from the shared design system LibNativeUI-1.0 (2026-10-01):
 
-- The panel `TargetFinderFrame` is a `ButtonFrameTemplate` window, built lazily by one builder, toggled by `ns.TogglePanel()` from the minimap button and the compartment.
-  - Portrait shown with `SetPortraitToAsset(132212)`, title "Target Finder", strata HIGH, toplevel, clamped, movable, Escape via `UISpecialFrames`, not in `UIPanelWindows`.
-  - The attic holds the help text at x=60 (clear of the 62 px portrait), centred on the band between `PANEL_INSET_TOP_OFFSET` and `PANEL_INSET_ATTIC_OFFSET`. Rows live in `frame.Inset`. Height comes from `PANEL_INSET_ATTIC_OFFSET` and `PANEL_INSET_BOTTOM_BUTTON_OFFSET`.
-  - Bottom bar: Add Nearby Quest Units (primary) at `BOTTOMRIGHT`, Clear Unit List `RIGHT` to its `LEFT`, both `MagicButtonTemplate` anchored with zero offsets, then `MagicButton_OnLoad` (`Mainline/SharedUIPanelTemplates.lua:12-46`).
-  - The X closes through `onCloseCallback` (`SharedUIPanelTemplates.lua:150-162`), which hides the panel itself, so it works in combat.
-  - Row Add is `UIPanelButtonTemplate`, remove is `UIPanelCloseButtonNoScripts`, inputs `InputBoxTemplate`.
-- Suggestions are built like Blizzard's name autocomplete (`Blizzard_AutoComplete/AutoComplete.xml`): `TooltipBackdropTemplate`, `AutoCompleteButtonTemplate` rows and the `PRESS_TAB` hint. Blizzard's shared `AutoCompleteBox` isn't used, because writing to it would taint chat. The quest tag uses `GRAY_FONT_COLOR`, the hint `LIGHTGRAY_FONT_COLOR`.
-- Minimap button: LibDataBroker `launcher` "Target Finder", icon 132212, db at `TargetFinderDB.minimap`. Tooltip: `GameTooltip_SetTitle` plus instruction lines, a disabled line and an error line while Questie isn't ready.
-- Chat prefix `YELLOW_FONT_COLOR`, combat notice `RED_FONT_COLOR`. No hardcoded colour codes or font files remain.
+- The library sits at `Libs/LibNativeUI-1.0/` (code and README, the spec), loaded right after LibDBIcon. It is an identical copy of the reference in `ChatScan`, so it is never edited here.
+- Components adopted: `UI.CreateWindow`, `UI.AddBarButton`, `UI.CreateToggle`, `UI.RegisterSlash`, `UI.CreateLauncher`, `UI.Print` (behind `ns.Announce`), `UI.CreateText`, `UI.CreateButton`, `UI.CreateEditBox`, `UI.CreateRemoveButton` and `UI.AttachTooltip`. The slot rows and the suggestion popup stay addon composites built from those parts and the tokens.
+- The panel `TargetFinderFrame` is `UI.CreateWindow`, built on first toggle by `UI.CreateToggle`. `ns.TogglePanel` serves the minimap button, the addon menu and `/tf`.
+  - The window gives the portrait (`132212`), the title "Target Finder", strata HIGH, toplevel, clamped, movable, Escape via `UISpecialFrames` (not `UIPanelWindows`), and the combat-safe X through `onCloseCallback`. There's no position persistence, as before.
+  - Size: 400 wide (was 360), so the 12 px help wraps to two lines in the 36 px attic. Height is `-PANEL_INSET_ATTIC_OFFSET` + 16 + 8 × 24 + 16 + `PANEL_INSET_BOTTOM_BUTTON_OFFSET` = 310 (was 290).
+  - The attic help is `UI.Font.body` (12 px, was GameFontHighlightSmall 10 px). It starts at `UI.Snap(57)` = 64, the first grid line past the portrait's right edge (62 px at x=-5). It ends `UI.Space.padding` inside the inset's right edge, level with the rows.
+  - Rows: `UI.Space.padding` (16) inside the Inset on every side (was 8/6), `UI.Size.row` (24) high. Index 16 wide in `UI.Font.body`, then a 16 px marker one gap (8, was 4) to the right. The input starts one gap plus `UI.Native.inputArt` past the marker and ends one gap before Add/remove (was 6). With no trailing button it runs to the row's edge.
+  - Inputs are `UI.CreateEditBox`, which sets `UI.Font.body` (12 px Friz Quadrata, was InputBoxTemplate's ChatFontNormal, 14 px Arial Narrow). Add is `UI.CreateButton` 48 × 22, and remove is `UI.CreateRemoveButton` 24 × 24.
+  - Bottom bar: `UI.AddBarButton` puts Add Nearby Quest Units (176 = 22 × 8) bottom-right, then Clear Unit List (128, the default) to its left; `MagicButton_OnLoad` sets Blizzard's own bar spacing. The Add Nearby tooltip goes through `UI.AttachTooltip`, with motion scripts kept while disabled.
+- Suggestions are built like Blizzard's name autocomplete (`Blizzard_AutoComplete/AutoComplete.xml`): `TooltipBackdropTemplate`, `AutoCompleteButtonTemplate` rows and the `PRESS_TAB` hint. Blizzard's shared `AutoCompleteBox` isn't used, because writing to it would taint chat.
+  - Its metrics stay Blizzard's, named as native geometry: row 14, text inset 15, first row 10, hint bottom 10, chrome 35 and edit-box overlap 3 (`AUTOCOMPLETE_DEFAULT_Y_OFFSET`).
+  - The role icon is `UI.Size.icon` (16, was 12), so it overhangs the 14 px row by 1 px each side. Its gap to the name is `UI.Space.gap` (8, was 2), so names start at 39 (was 29).
+  - The hint is `UI.Font.muted` (12 px, was Blizzard's GameFontDisableSmall, 10 px), tinted `LIGHTGRAY_FONT_COLOR`. Add All is `UI.Font.body`. The quest tag is `UI.Color.muted` (= `GRAY_FONT_COLOR`).
+  - Strata `UI.Strata.dialog` (DIALOG, was FULLSCREEN_DIALOG). That is still above the HIGH panel; Blizzard's own box uses TOOLTIP.
+- Launcher: `UI.CreateLauncher`, title "Target Finder" (the LDB name is unchanged), icon 132212, db `TargetFinderDB.minimap`, so the saved position carries over. The launcher adds the tooltip title. `UI/MinimapButton.lua` adds the instruction lines, plus a disabled and an error line while Questie isn't ready.
+  - The toc `## AddonCompartmentFunc*` lines and the `TargetFinder_OnClick/OnEnter/OnLeave` globals are gone. LibDBIcon's `AddButtonToCompartment` registers the addon-menu entry through `AddonCompartmentFrame:RegisterAddon` (`Blizzard_Minimap/Mainline/AddonCompartment.lua:136`). That entry reuses the data object's `OnClick` and `OnTooltipShow`, and it sets `TargetFinderDB.minimap.showInCompartment`.
+- Chat goes through `UI.Print` (yellow `UI.Color.prefix`). The combat notice stays `RED_FONT_COLOR`. No hardcoded colour codes or font files remain.
+- Tests: the harness loads the real `LibNativeUI-1.0.lua` from the toc and stubs the rest (LibStub with `NewLibrary`, LibDBIcon's compartment call, `AddonCompartmentFrame`, `GameTooltip_Hide`, the attic and bar helpers, the role font objects and colours). New checks cover the toc order, absent compartment fields and globals, one addon-menu entry and its clicks, grid padding and width, the input font and the popup strata.
 
 Verified API facts:
 
@@ -99,7 +108,6 @@ Nothing to do:
 - Combat lockdown: queued writes, the in-combat close, and deferred menu actions.
 - The unit menu integration and tags.
 - Templates and strings.
-- The Addon Compartment callbacks.
 - First load with empty SV: the beta WTF has none, and the boot test covers it.
 - `.pkgmeta`.
 
@@ -128,7 +136,9 @@ Unverified assumptions kept in code:
 
 Forever checks:
 
-- [ ] The panel shows the portrait icon, the help text beside it, and Add Nearby Quest Units bottom right with Clear Unit List to its left, both in the standard bar spacing.
+- [ ] The panel shows the portrait icon, the 12 px help text beside it on two lines inside the attic, and Add Nearby Quest Units bottom right with Clear Unit List to its left, both in the standard bar spacing.
+- [ ] Rows look even at 12 px: 16 px padding in the inset, 8 px between index, marker, input and Add/remove, and the input's left cap clear of the marker.
+- [ ] The addon menu under the minimap lists Target Finder exactly once (no toc entry any more).
 - [ ] Right after login the Add Nearby button is off with "Questie is still loading."; it turns on by itself once Questie finishes, without reopening the panel.
 - [ ] The first keystroke after login causes no hitch (the name index was prebuilt).
 - [ ] Type a nearby NPC in slot 1 and press Enter: a Skull shows in the row and the macro book opens with FIND pulsing. `/m` shows `/target Name`.
@@ -138,10 +148,10 @@ Forever checks:
 - [ ] Target a wolf and type "Kobold": the wolf stays unmarked.
 - [ ] Track "Chillgular" near "Auctioneer Chillgular": FIND never targets the auctioneer.
 - [ ] Add a slot in combat: one red notice, and the macro updates after combat. The panel's X closes in combat.
-- [ ] Type "Kob": the popup looks like the whisper autocomplete. Up/Down, Enter and Tab work.
+- [ ] Type "Kob": the popup looks like the whisper autocomplete. Up/Down, Enter and Tab work. The 12 px "Press Tab" hint doesn't touch the Add All row, and the 16 px role icons don't clash between rows.
 - [ ] Finish a kill objective: that mob drops out of suggestions and Add Nearby without a `/reload`.
 - [ ] Click Add Nearby inside a dungeon: no Lua error.
-- [ ] The compartment entry has the same tooltip as the minimap button: left-click toggles, right-click adds nearby.
+- [ ] The addon-menu entry has the same tooltip as the minimap button: left-click toggles, shift-left-click clears, right-click adds nearby. The minimap button kept its saved position.
 - [ ] Track a mob from its unit menu outside restricted content: it gets marked. This settles issue 1.
 - [ ] In a dungeon, run `/run print(pcall(canaccessvalue, UnitName("target")))` and `/dump C_Secrets.ShouldUnitComparisonBeSecret("party1", "player")`: no Lua error, and Assist is hidden while either is restricted.
 - [ ] Distances look right in a zone whose map differs on Forever, including a sub-zone (TF-10).
@@ -150,4 +160,4 @@ Forever checks:
 
 ## Launchers (owner decision 2026-09-30)
 
-- `/tf` and `/targetfinder` toggle the panel through `ns.TogglePanel` (`UI/Panel.lua`), the same toggle the minimap button and the Addon Compartment use. No Blizzard or installed addon uses either command. The test harness stubs `SlashCmdList` and checks the registration (167/167).
+- `/tf` and `/targetfinder` toggle the panel through `ns.TogglePanel` (`UI/Panel.lua`), the same toggle the minimap button and the Addon Compartment use, registered with `UI.RegisterSlash`. No Blizzard or installed addon uses either command. The test harness stubs `SlashCmdList` and checks the registration.

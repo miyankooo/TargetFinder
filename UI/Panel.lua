@@ -1,31 +1,25 @@
 local _, ns = ...
+local UI = LibStub("LibNativeUI-1.0")
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), with MagicButtonTemplate buttons on its bottom bar. The dialog kit is for small popups, which eight editable rows are not.
+-- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), which UI.CreateWindow builds. The dialog kit is for small popups, which eight editable rows are not.
 local PANEL_NAME = "TargetFinderFrame"
-local PANEL_WIDTH = 360
 
--- The portrait is 62px wide and hangs 5px outside the frame (PortraitFrameBaseTemplate), so attic text starts just past it, level with the title.
-local ATTIC_LEFT = 60
+-- Wide enough that the 12px attic help wraps to two lines, which is all the 36px attic holds.
+local PANEL_WIDTH = 50 * UI.GRID
 
-local ROW_HEIGHT = 24
-local ROW_PAD_X = 8
-local ROW_PAD_Y = 6
-local INDEX_WIDTH = 16
-local ICON_SIZE = 16
-local ROW_GAP = 4
+-- Native geometry: PortraitFrameBaseTemplate draws its 62px portrait at x=-5 (Mainline/SharedUIPanelTemplates.xml:581-584), so its right edge sits 57px into the frame.
+local NATIVE_PORTRAIT_RIGHT = 57
 
--- InputBoxTemplate draws its left cap 5px outside the box, so the box starts that far past its neighbour to keep the art clear of it.
-local INPUT_ART_OFFSET = 6
-local INPUT_HEIGHT = 20
-local ROW_BUTTON_SIZE = 24
-local ADD_BUTTON_WIDTH = 48
-local ADD_BUTTON_HEIGHT = 22
+-- Attic text starts on the first grid line clear of the portrait, level with the title.
+local ATTIC_LEFT = UI.Snap(NATIVE_PORTRAIT_RIGHT)
 
--- MagicButtonTemplate is 80px wide, too narrow for these labels.
-local NEARBY_WIDTH = 176
-local CLEAR_WIDTH = 128
+local INDEX_WIDTH = 2 * UI.GRID
+local ADD_WIDTH = 6 * UI.GRID
+
+-- MagicButtonTemplate is 80px wide, too narrow for this label.
+local NEARBY_WIDTH = 22 * UI.GRID
 
 local NEARBY_LABEL = "Add Nearby Quest Units"
 local NEARBY_HELP = "Replaces the list with the kill, loot and turn-in NPCs of your quests that are closest to you."
@@ -94,20 +88,19 @@ local function layoutTrailing(row, slot)
     row.removeBtn:SetShown(removeSlot ~= nil)
     row.removeBtn.targetSlot = removeSlot
 
+    -- InputBoxTemplate hangs only its left cap outside the box, so the box starts that far past one gap and its right edge needs no compensation.
     input:ClearAllPoints()
-    input:SetPoint("LEFT", row.icon, "RIGHT", INPUT_ART_OFFSET + ROW_GAP, 0)
+    input:SetPoint("LEFT", row.icon, "RIGHT", UI.Space.gap + UI.Native.inputArt, 0)
     local trailing = (showAdd and row.addBtn) or (removeSlot and row.removeBtn)
     if trailing then
-        input:SetPoint("RIGHT", trailing, "LEFT", -INPUT_ART_OFFSET, 0)
+        input:SetPoint("RIGHT", trailing, "LEFT", -UI.Space.gap, 0)
     else
-        input:SetPoint("RIGHT", row, "RIGHT", -INPUT_ART_OFFSET, 0)
+        input:SetPoint("RIGHT", row, "RIGHT")
     end
 end
 
 local function buildSlotInput(row, slot)
-    local input = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
-    input:SetHeight(INPUT_HEIGHT)
-    input:SetAutoFocus(false)
+    local input = UI.CreateEditBox(row)
     input:SetMaxLetters(40)
     input.slot = slot
 
@@ -125,19 +118,16 @@ local function buildSlotInput(row, slot)
     return input
 end
 
--- Add is a plain UIPanelButtonTemplate and remove is Blizzard's own close button. NoScripts, because the stock close handler would hide the whole row.
+-- The remove button is Blizzard's close button without its scripts, because the stock close handler would hide the whole row.
 local function buildRowButtons(row, slot)
-    local addBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    addBtn:SetSize(ADD_BUTTON_WIDTH, ADD_BUTTON_HEIGHT)
-    addBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    addBtn:SetText(ADD)
+    local addBtn = UI.CreateButton(row, ADD, ADD_WIDTH)
+    addBtn:SetPoint("RIGHT", row, "RIGHT")
     addBtn:SetScript("OnClick", function() ns.ApplyRowInput(slot) end)
     addBtn:Hide()
     row.addBtn = addBtn
 
-    local removeBtn = CreateFrame("Button", nil, row, "UIPanelCloseButtonNoScripts")
-    removeBtn:SetSize(ROW_BUTTON_SIZE, ROW_BUTTON_SIZE)
-    removeBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    local removeBtn = UI.CreateRemoveButton(row)
+    removeBtn:SetPoint("RIGHT", row, "RIGHT")
     removeBtn:SetScript("OnClick", function() ns.RemoveFinder(removeBtn.targetSlot or slot) end)
     removeBtn:Hide()
     row.removeBtn = removeBtn
@@ -145,20 +135,20 @@ end
 
 local function buildSlotRow(parent, slot)
     local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(ROW_HEIGHT)
-    local top = -ROW_PAD_Y - (slot - 1) * ROW_HEIGHT
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", ROW_PAD_X, top)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -ROW_PAD_X, top)
+    row:SetHeight(UI.Size.row)
+    local top = -UI.Space.padding - (slot - 1) * UI.Size.row
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", UI.Space.padding, top)
+    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -UI.Space.padding, top)
 
-    local index = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    index:SetPoint("LEFT", row, "LEFT", 0, 0)
+    local index = UI.CreateText(row, "body")
+    index:SetPoint("LEFT", row, "LEFT")
     index:SetWidth(INDEX_WIDTH)
     index:SetJustifyH("RIGHT")
     index:SetText(slot .. ".")
 
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(ICON_SIZE, ICON_SIZE)
-    icon:SetPoint("LEFT", index, "RIGHT", ROW_GAP, 0)
+    icon:SetSize(UI.Size.icon, UI.Size.icon)
+    icon:SetPoint("LEFT", index, "RIGHT", UI.Space.gap, 0)
     icon:Hide()
     row.icon = icon
 
@@ -172,78 +162,51 @@ local function buildSlotRow(parent, slot)
 end
 
 -- Blizzard's tooltip helpers carry the standard tooltip colours; the error line says why the button is off.
-local function showNearbyTooltip(button)
-    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-    GameTooltip_SetTitle(GameTooltip, NEARBY_LABEL)
-    GameTooltip_AddNormalLine(GameTooltip, NEARBY_HELP)
+local function fillNearbyTooltip(tooltip)
+    GameTooltip_SetTitle(tooltip, NEARBY_LABEL)
+    GameTooltip_AddNormalLine(tooltip, NEARBY_HELP)
     if not ns.QuestieReady() then
-        GameTooltip_AddErrorLine(GameTooltip, ns.QuestieExcuse())
+        GameTooltip_AddErrorLine(tooltip, ns.QuestieExcuse())
     end
-    GameTooltip:Show()
 end
 
--- Buttons are anchored with zero offsets first, because MagicButton_OnLoad only turns zero-offset anchors into Blizzard's standard bar spacing (Mainline/SharedUIPanelTemplates.lua:12-46), and the template's own OnLoad ran before these buttons had any anchor. The primary action sits bottom-right.
+-- The primary action takes the bottom-right corner and Clear chains to its left.
 local function buildButtonBar(frame)
-    local nearbyButton = CreateFrame("Button", nil, frame, "MagicButtonTemplate")
-    nearbyButton:SetWidth(NEARBY_WIDTH)
-    nearbyButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT")
-    MagicButton_OnLoad(nearbyButton)
-    nearbyButton:SetText(NEARBY_LABEL)
-    nearbyButton:SetScript("OnClick", function() ns.AddNearbyQuestNpcs() end)
+    local nearbyButton = UI.AddBarButton(frame, NEARBY_LABEL, function() ns.AddNearbyQuestNpcs() end, NEARBY_WIDTH)
 
     -- Motion scripts stay alive while disabled, so the tooltip can still explain what is missing.
     nearbyButton:SetMotionScriptsWhileDisabled(true)
-    nearbyButton:SetScript("OnEnter", showNearbyTooltip)
-    nearbyButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    UI.AttachTooltip(nearbyButton, fillNearbyTooltip)
     frame.nearbyButton = nearbyButton
 
-    local clearButton = CreateFrame("Button", nil, frame, "MagicButtonTemplate")
-    clearButton:SetWidth(CLEAR_WIDTH)
-    clearButton:SetPoint("RIGHT", nearbyButton, "LEFT")
-    MagicButton_OnLoad(clearButton)
-    clearButton:SetText(CLEAR_LABEL)
-    clearButton:SetScript("OnClick", function() ns.ClearFinder() end)
-    frame.clearButton = clearButton
+    frame.clearButton = UI.AddBarButton(frame, CLEAR_LABEL, function() ns.ClearFinder() end)
 end
 
--- Help text in the attic, the band between the title bar and the Inset, beside the portrait and centred on the band's height.
+-- Help text in the attic, the band between the title bar and the Inset, beside the portrait and centred on the band's height. Its right edge lines up with the rows below.
 local function buildAtticHelp(frame)
     local atticMiddle = (PANEL_INSET_TOP_OFFSET + PANEL_INSET_ATTIC_OFFSET) / 2
-    local helper = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local helper = UI.CreateText(frame, "body")
     helper:SetPoint("LEFT", frame, "TOPLEFT", ATTIC_LEFT, atticMiddle)
-    helper:SetPoint("RIGHT", frame, "TOPRIGHT", PANEL_INSET_RIGHT_OFFSET - ROW_PAD_X, atticMiddle)
-    helper:SetJustifyH("LEFT")
+    helper:SetPoint("RIGHT", frame, "TOPRIGHT", PANEL_INSET_RIGHT_OFFSET - UI.Space.padding, atticMiddle)
     helper:SetWordWrap(true)
     helper:SetText(PANEL_HELP)
 end
 
--- Movable, clamped and toplevel like Blizzard's own windows; Escape closes it through UISpecialFrames, which needs the global name. It stays out of UIPanelWindows so the addon never drives Blizzard's panel layout, which is a taint source.
+-- The window's height follows the template's own attic and button bar offsets around the padded rows.
+local function panelHeight()
+    local contentHeight = UI.Space.padding * 2 + MAX_TARGETS * UI.Size.row
+    return -PANEL_INSET_ATTIC_OFFSET + contentHeight + PANEL_INSET_BOTTOM_BUTTON_OFFSET
+end
+
 local function buildPanel()
-    if panel then return panel end
-
-    panel = CreateFrame("Frame", PANEL_NAME, UIParent, "ButtonFrameTemplate")
-    panel:SetPortraitToAsset(ns.ADDON_ICON)
-    panel:SetTitle(ns.ADDON_NAME)
-    local contentHeight = ROW_PAD_Y * 2 + MAX_TARGETS * ROW_HEIGHT
-    panel:SetSize(PANEL_WIDTH, -PANEL_INSET_ATTIC_OFFSET + contentHeight + PANEL_INSET_BOTTOM_BUTTON_OFFSET)
-    panel:SetPoint("CENTER")
-    panel:SetFrameStrata("HIGH")
-    panel:SetToplevel(true)
-    panel:SetClampedToScreen(true)
-    panel:SetMovable(true)
-    panel:EnableMouse(true)
-    panel:RegisterForDrag("LeftButton")
-    panel:SetScript("OnDragStart", panel.StartMoving)
-    panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+    panel = UI.CreateWindow({
+        name = PANEL_NAME,
+        title = ns.ADDON_NAME,
+        icon = ns.ADDON_ICON,
+        width = PANEL_WIDTH,
+        height = panelHeight(),
+    })
     panel:SetScript("OnShow", function() ns.RefreshPanel() end)
-    panel:Hide()
-    tinsert(UISpecialFrames, PANEL_NAME)
-
-    -- The template's close button calls HideUIPanel, which refuses insecure callers in combat (UIParentPanelManager.lua CheckProtectedFunctionsAllowed). UIPanelCloseButton_OnClick asks onCloseCallback first, so the panel hides itself and the stock path is skipped.
-    panel.onCloseCallback = function()
-        panel:Hide()
-        return false
-    end
 
     buildAtticHelp(panel)
 
@@ -275,14 +238,7 @@ function ns.RefreshPanel()
     end
 end
 
-function ns.TogglePanel()
-    buildPanel()
-    if panel:IsShown() then
-        panel:Hide()
-    else
-        panel:Show()
-    end
-end
+-- The minimap button, the addon menu and /tf share this one toggle.
+ns.TogglePanel = UI.CreateToggle(buildPanel)
 
-SLASH_TARGETFINDER1, SLASH_TARGETFINDER2 = "/tf", "/targetfinder"
-SlashCmdList.TARGETFINDER = ns.TogglePanel
+UI.RegisterSlash("TARGETFINDER", { "/tf", "/targetfinder" }, ns.TogglePanel)
