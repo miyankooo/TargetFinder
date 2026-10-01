@@ -8,14 +8,12 @@
 ## OptionalDeps: Questie
 ## SavedVariables: TargetFinderDB
 ## SavedVariablesPerCharacter: TargetFinderCharDB
-## AddonCompartmentFunc: TargetFinder_OnClick
-## AddonCompartmentFuncOnEnter: TargetFinder_OnEnter
-## AddonCompartmentFuncOnLeave: TargetFinder_OnLeave
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+Libs\LibNativeUI-1.0\LibNativeUI-1.0.lua
 
 Core\Core.lua
 Core\Secrets.lua

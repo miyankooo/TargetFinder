@@ -1,4 +1,5 @@
 local _, ns = ...
+local UI = LibStub("LibNativeUI-1.0")
 
 -- The autocomplete popup under a slot row. It owns nothing but presentation: every name it offers comes from Quest.lua, and picking one goes straight back through the row's own apply path.
 
@@ -6,14 +7,16 @@ local _, ns = ...
 local POPUP_NAME = "TargetFinderSuggestions"
 local MAX_SUGGESTIONS = ns.MAX_SUGGESTIONS
 
--- AutoComplete.xml geometry: 14px rows starting 10px below the top, 35px of vertical chrome, text inset 15px, anchored 3px into the edit box.
-local ROW_HEIGHT = 14
-local ROWS_TOP = 10
-local CHROME_HEIGHT = 35
-local TEXT_INSET = 15
-local ANCHOR_OVERLAP = 3
-local ICON_SIZE = 12
-local ICON_GAP = 2
+-- Native geometry of Blizzard's AutoCompleteBox (Blizzard_AutoComplete): AutoCompleteButtonTemplate rows are 14px (AutoComplete.xml:17) with text 15px in (:21), AutoCompleteButton1 starts 10px below the border (:52) and the hint sits 10px above the bottom (:40), AutoComplete_Update adds 35px of chrome (AutoComplete.lua:296), and AUTOCOMPLETE_DEFAULT_Y_OFFSET overlaps the edit box by 3px (AutoComplete.lua:130).
+local NATIVE_ROW_HEIGHT = 14
+local NATIVE_TEXT_INSET = 15
+local NATIVE_ROWS_TOP = 10
+local NATIVE_HINT_BOTTOM = 10
+local NATIVE_CHROME = 35
+local NATIVE_OVERLAP = 3
+
+-- Role icons come before the name, one gap clear of it.
+local NAME_INSET = NATIVE_TEXT_INSET + UI.Size.icon + UI.Space.gap
 
 local QUEST_LABEL = "[Quest] "
 local ADD_ALL_TEXT = "Add All"
@@ -122,18 +125,18 @@ end
 local function buildRow(parent, name)
     local row = CreateFrame("Button", name, parent, "AutoCompleteButtonTemplate")
     local text = row:GetFontString()
-    text:SetPoint("RIGHT", row, "RIGHT", -TEXT_INSET, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -NATIVE_TEXT_INSET, 0)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
     return row
 end
 
--- Full-width rows stacked under each other, the first one ROWS_TOP below the border like AutoCompleteButton1.
+-- Full-width rows stacked under each other, the first one NATIVE_ROWS_TOP below the border like AutoCompleteButton1.
 local function stackRow(row, above)
     row:ClearAllPoints()
     if above == popup then
-        row:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, -ROWS_TOP)
-        row:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, -ROWS_TOP)
+        row:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, -NATIVE_ROWS_TOP)
+        row:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, -NATIVE_ROWS_TOP)
     else
         row:SetPoint("TOPLEFT", above, "BOTTOMLEFT")
         row:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT")
@@ -142,11 +145,11 @@ end
 
 local function buildQuestIcon(row)
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(ICON_SIZE, ICON_SIZE)
-    icon:SetPoint("LEFT", row, "LEFT", TEXT_INSET, 0)
+    icon:SetSize(UI.Size.icon, UI.Size.icon)
+    icon:SetPoint("LEFT", row, "LEFT", NATIVE_TEXT_INSET, 0)
     icon:Hide()
     row.icon = icon
-    row:GetFontString():SetPoint("LEFT", row, "LEFT", TEXT_INSET + ICON_SIZE + ICON_GAP, 0)
+    row:GetFontString():SetPoint("LEFT", row, "LEFT", NAME_INSET, 0)
 end
 
 local function buildPopup()
@@ -171,14 +174,14 @@ local function buildPopup()
 
     -- White text marks the footer as an action rather than one more gold name.
     local addAll = buildRow(popup, POPUP_NAME .. "AddAll")
-    addAll:SetNormalFontObject(GameFontHighlight)
+    addAll:SetNormalFontObject(UI.Font.body)
     addAll:SetText(ADD_ALL_TEXT)
     addAll:SetScript("OnClick", function() addAllShown(popup.owner) end)
     popup.addAll = addAll
 
-    -- AutoComplete_OnLoad tints this hint with a literal light grey; LIGHTGRAY_FONT_COLOR is the colour object for that shade.
-    local hint = popup:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    hint:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", TEXT_INSET, 10)
+    -- AutoComplete_OnLoad tints this hint with a literal light grey; LIGHTGRAY_FONT_COLOR is the colour object for that shade. It uses the 12px muted role, not Blizzard's 10px hint font.
+    local hint = UI.CreateText(popup, "muted")
+    hint:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", NATIVE_TEXT_INSET, NATIVE_HINT_BOTTOM)
     hint:SetText(LIGHTGRAY_FONT_COLOR:WrapTextInColorCode(PRESS_TAB))
 
     return popup
@@ -187,7 +190,7 @@ end
 local function entryText(entry)
     if entry.type == "quest" then return QUEST_LABEL .. entry.name end
     if entry.isQuestNpc and entry.questName then
-        return entry.name .. " " .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. entry.questName .. ")")
+        return entry.name .. " " .. UI.Color.muted:WrapTextInColorCode("(" .. entry.questName .. ")")
     end
     return entry.name
 end
@@ -208,15 +211,15 @@ end
 -- AutoComplete_Update's rule: open below the edit box, or above it when the box would run off the bottom of the screen.
 local function anchorTo(input, height)
     popup:SetParent(input)
-    popup:SetFrameStrata("FULLSCREEN_DIALOG")
+    popup:SetFrameStrata(UI.Strata.dialog)
     popup:ClearAllPoints()
     local bottom = input:GetBottom()
-    if bottom and bottom - height <= ANCHOR_OVERLAP + ROWS_TOP then
-        popup:SetPoint("BOTTOMLEFT", input, "TOPLEFT", 0, -ANCHOR_OVERLAP)
-        popup:SetPoint("BOTTOMRIGHT", input, "TOPRIGHT", 0, -ANCHOR_OVERLAP)
+    if bottom and bottom - height <= NATIVE_OVERLAP + NATIVE_ROWS_TOP then
+        popup:SetPoint("BOTTOMLEFT", input, "TOPLEFT", 0, -NATIVE_OVERLAP)
+        popup:SetPoint("BOTTOMRIGHT", input, "TOPRIGHT", 0, -NATIVE_OVERLAP)
     else
-        popup:SetPoint("TOPLEFT", input, "BOTTOMLEFT", 0, ANCHOR_OVERLAP)
-        popup:SetPoint("TOPRIGHT", input, "BOTTOMRIGHT", 0, ANCHOR_OVERLAP)
+        popup:SetPoint("TOPLEFT", input, "BOTTOMLEFT", 0, NATIVE_OVERLAP)
+        popup:SetPoint("TOPRIGHT", input, "BOTTOMRIGHT", 0, NATIVE_OVERLAP)
     end
 end
 
@@ -242,7 +245,7 @@ local function showSuggestions(input, list)
     setSelection(0)
     stackRow(popup.addAll, popup.rows[count])
 
-    local height = (count + 1) * ROW_HEIGHT + CHROME_HEIGHT
+    local height = (count + 1) * NATIVE_ROW_HEIGHT + NATIVE_CHROME
     popup:SetHeight(height)
     anchorTo(input, height)
     popup:Show()

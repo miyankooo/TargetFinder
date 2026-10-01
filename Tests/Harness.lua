@@ -83,6 +83,7 @@ function CreateFrame(kind, name, parent, template)
         return self
     end
     f.ClearAllPoints = function(self) self.points = {}; return self end
+    f.SetSize = function(self, w, h) self.width, self.height = w, h; return self end
     f.SetFrameStrata = function(self, strata) self.strata = strata; return self end
     f.SetScript = function(self, ev, fn) self.scripts[ev] = fn; return self end
     f.GetScript = function(self, ev) return self.scripts[ev] end
@@ -111,11 +112,13 @@ function CreateFrame(kind, name, parent, template)
     f.CreateFontString = function(self)
         local fs = newRegion("FontString")
         fs.SetText = function(s, v) s.text = v; return s end
+        fs.SetFontObject = function(s, font) s.fontObject = font; return s end
         fs.GetStringWidth = function() return 10 end
         fs.GetStringHeight = function() return 10 end
         return fs
     end
     if kind == "EditBox" then
+        f.SetFontObject = function(self, font) self.fontObject = font; return self end
         f.SetText = function(self, v) self.text = v; return self end
         f.GetText = function(self) return self.text or "" end
         f.HasFocus = function() return false end
@@ -222,13 +225,23 @@ UISpecialFrames = {}
 SlashCmdList = {}
 UIErrorsFrame = { AddMessage = function(_, m) W.errors[#W.errors+1] = m end }
 GameTooltip = CreateFrame("Frame")
+function GameTooltip_Hide() GameTooltip:Hide() end
 MacroFrame = nil
 Menu = { ModifyMenu = function(tag, cb) W.menuHooks = W.menuHooks or {}; W.menuHooks[tag] = cb end }
 ADD = "Add"
 PRESS_TAB = "Press Tab"
-GameFontHighlight = {}
+-- the font objects behind LibNativeUI's roles; distinct tables so a test can tell the roles apart
+GameFontNormal = { name = "GameFontNormal" }
+GameFontHighlight = { name = "GameFontHighlight" }
+GameFontDisable = { name = "GameFontDisable" }
+GameFontNormalLarge = { name = "GameFontNormalLarge" }
+GameFontNormalHuge = { name = "GameFontNormalHuge" }
 -- MagicButton_OnLoad only adjusts anchors that exist when it runs, so record how many there were
 function MagicButton_OnLoad(b) b.magicAnchors = #b.points end
+-- ButtonFrameTemplate's attic and button bar helpers, which UI.CreateWindow calls only when a spec asks
+function ButtonFrameTemplate_HideAttic(f) f.atticHeight = -PANEL_INSET_TOP_OFFSET end
+function FrameTemplate_SetAtticHeight(f, h) f.atticHeight = h end
+function ButtonFrameTemplate_HideButtonBar(f) f.buttonBarHidden = true end
 PANEL_INSET_LEFT_OFFSET = 4
 PANEL_INSET_RIGHT_OFFSET = -6
 PANEL_INSET_BOTTOM_OFFSET = 4
@@ -242,6 +255,10 @@ local function colorObject(hex, r, g, b)
         GetRGB = function() return r, g, b end,
     }
 end
+NORMAL_FONT_COLOR = colorObject("ffd100", 1, 0.82, 0)
+HIGHLIGHT_FONT_COLOR = colorObject("ffffff", 1, 1, 1)
+GREEN_FONT_COLOR = colorObject("20ff20", 0.125, 1, 0.125)
+WARNING_FONT_COLOR = colorObject("ff7f00", 1, 0.5, 0)
 YELLOW_FONT_COLOR = colorObject("ffff00", 1, 1, 0)
 RED_FONT_COLOR = colorObject("ff2020", 1, 0.125, 0.125)
 GRAY_FONT_COLOR = colorObject("808080", 0.5, 0.5, 0.5)
@@ -255,12 +272,43 @@ GameTooltip_AddInstructionLine = tooltipLine("instruction")
 GameTooltip_AddDisabledLine = tooltipLine("disabled")
 GameTooltip_AddErrorLine = tooltipLine("error")
 
--- LibStub with just the two libraries the addon pulls at login
+-- Blizzard's addon menu; RegisterAddon only appends, like AddonCompartmentMixin:RegisterAddon
+AddonCompartmentFrame = { registeredAddons = {} }
+function AddonCompartmentFrame:RegisterAddon(data) self.registeredAddons[#self.registeredAddons+1] = data end
+
+-- LibDBIcon's compartment entry hands Blizzard's menu click to the data object, as LibDBIcon-1.0.lua does
+local function addToCompartment(_, name)
+    local obj = W.ldbObject
+    AddonCompartmentFrame:RegisterAddon({
+        text = name,
+        icon = obj.icon,
+        func = function(_, menuInputData, menu) obj.OnClick(menu, menuInputData.buttonName) end,
+    })
+end
+
+-- LibStub with the two libraries the launcher pulls, plus NewLibrary so the embedded LibNativeUI loads for real
 local libs = {
     ["LibDataBroker-1.1"] = { NewDataObject = function(_, _, o) return o end },
-    ["LibDBIcon-1.0"] = { IsRegistered = function() return false end, Register = function(_, _, obj) W.ldbObject = obj end },
+    ["LibDBIcon-1.0"] = {
+        IsRegistered = function() return false end,
+        Register = function(_, _, obj) W.ldbObject = obj end,
+        AddButtonToCompartment = addToCompartment,
+    },
 }
-function LibStub(n) return libs[n] end
+LibStub = setmetatable({
+    NewLibrary = function(_, major)
+        libs[major] = libs[major] or {}
+        return libs[major]
+    end,
+}, { __call = function(_, n) return libs[n] end })
+
+-- the libraries the stub above stands in for; every other toc file loads from disk
+local STUBBED = {
+    ["Libs/LibStub/LibStub.lua"] = true,
+    ["Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua"] = true,
+    ["Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua"] = true,
+    ["Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua"] = true,
+}
 
 -- === load the addon exactly as the toc orders it ===
 local ns = {}
@@ -274,7 +322,7 @@ end
 
 local loaded = {}
 for _, rel in ipairs(files) do
-    if not rel:match("^Libs/") then
+    if not STUBBED[rel] then
         local chunk, err = loadfile(ADDON .. rel)
         if not chunk then error("LOAD FAIL " .. rel .. ": " .. tostring(err)) end
         local ok, e = pcall(chunk, "TargetFinder", ns)
@@ -283,6 +331,6 @@ for _, rel in ipairs(files) do
     end
 end
 
-print("loaded " .. #loaded .. " addon files in toc order")
+print("loaded " .. #loaded .. " addon and library files in toc order")
 _G.ns = ns
 _G.W = W
