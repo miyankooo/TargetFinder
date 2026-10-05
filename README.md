@@ -146,4 +146,4 @@ The offline suite loads the addon in toc order against a client stub and a small
 | `UI/Panel.lua` | The panel and its slot rows |
 | `UI/MinimapButton.lua` | The launcher: minimap button and addon-menu entry |
 | `Libs/` | LibStub, CallbackHandler-1.0, LibDataBroker-1.1 and LibDBIcon-1.0 for the minimap button and addon menu, and LibNativeUI-1.0, the shared design system the window, launcher and slash command are built from |
-| `.pkgmeta` | Packaging; leaves `Tests` and `MEMORY.md` out |
+| `.pkgmeta` | Packaging; leaves `Tests` out |

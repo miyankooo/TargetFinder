@@ -2,4 +2,3 @@ package-as: TargetFinder
 
 ignore:
   - Tests
-  - MEMORY.md
