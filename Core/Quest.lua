@@ -45,10 +45,11 @@ local function databaseModule()
     return db
 end
 
--- Questie sets API.isReady as the last step of its init (QuestieInit.lua:342), after its database and quest log are built, so nothing is read before then.
+-- Questie sets API.isReady as the last step of its init (QuestieInit.lua:381), after its database and quest log are built, so nothing is read before then. A failed start sets Questie.started to false and leaves isReady false for good (QuestieInit.lua:128-129).
 local function questieStatus()
     local api = questieApi()
     if not api then return "absent" end
+    if _G.Questie.started == false then return "failed" end
     if api.isReady ~= true then return "loading" end
     if not databaseModule() then return "unsupported" end
     return "ready"
@@ -68,6 +69,7 @@ end
 local QUESTIE_EXCUSES = {
     absent = "Questie is not loaded.",
     loading = "Questie is still loading.",
+    failed = "Questie failed to start. Check Questie's own error message.",
     unsupported = "This Questie version is not supported.",
 }
 
@@ -83,7 +85,7 @@ function ns.QuestieKindIcons()
     return {
         [ns.KIND_KILL] = used[Q.ICON_TYPE_SLAY],
         [ns.KIND_DROP] = used[Q.ICON_TYPE_LOOT],
-        [ns.KIND_GIVER] = used[Q.ICON_TYPE_AVAILABLE],
+        [ns.KIND_TURNIN] = used[Q.ICON_TYPE_COMPLETE],
     }
 end
 
@@ -136,27 +138,39 @@ local function forEachObjectiveNpc(db, quest, visit)
             elseif data.Type == "killcredit" and type(data.IdList) == "table" then
                 for _, id in ipairs(data.IdList) do visit(id, ns.KIND_KILL) end
             elseif data.Type == "item" and data.Id then
-                local droppers = db.QueryItemSingle(data.Id, "npcDrops")
-                if type(droppers) == "table" then
-                    for _, dropperId in ipairs(droppers) do visit(dropperId, ns.KIND_DROP) end
+                -- An item can also come out of a container item, such as a crate, so the container's droppers count too, one level deep.
+                local sources = { data.Id }
+                local containers = db.QueryItemSingle(data.Id, "itemDrops")
+                if type(containers) == "table" then
+                    for _, containerId in ipairs(containers) do sources[#sources + 1] = containerId end
+                end
+                for _, itemId in ipairs(sources) do
+                    local droppers = db.QueryItemSingle(itemId, "npcDrops")
+                    if type(droppers) == "table" then
+                        for _, dropperId in ipairs(droppers) do visit(dropperId, ns.KIND_DROP) end
+                    end
                 end
             end
         end
     end
 end
 
--- startedBy and finishedBy are { npcIds, objectIds, itemIds }; only the NPC list is something /target can reach.
-local function forEachGiverNpc(db, questId, field, visit)
-    local givers = db.QueryQuestSingle(questId, field)
-    local npcs = type(givers) == "table" and givers[1]
+-- finishedBy is { npcIds, objectIds, itemIds }; only the NPC list is something /target can reach.
+local function forEachTurnInNpc(db, questId, visit)
+    local finishers = db.QueryQuestSingle(questId, "finishedBy")
+    local npcs = type(finishers) == "table" and finishers[1]
     if type(npcs) ~= "table" then return end
-    for _, id in ipairs(npcs) do visit(id, ns.KIND_GIVER) end
+    for _, id in ipairs(npcs) do visit(id, ns.KIND_TURNIN) end
 end
 
+-- One rule for every quest NPC: the turn-in NPC once Questie counts the quest complete, otherwise the NPCs of its open objectives. The quest giver is moot once the quest is in the log.
 local function forEachQuestNpc(db, log, questId, visit)
-    forEachObjectiveNpc(db, questObject(db, log, questId), visit)
-    forEachGiverNpc(db, questId, "startedBy", visit)
-    forEachGiverNpc(db, questId, "finishedBy", visit)
+    local quest = questObject(db, log, questId)
+    if readyToTurnIn(db, quest, questId) then
+        forEachTurnInNpc(db, questId, visit)
+    else
+        forEachObjectiveNpc(db, quest, visit)
+    end
 end
 
 -- Keeps each NPC name once with the highest-priority kind it was seen with, then sorts by kind with first-seen order as the tiebreak.
@@ -170,7 +184,7 @@ local function newNpcCollector(db)
         if not name then return end
         local existing = seen[name]
         if not existing then
-            existing = { name = name, kind = kind, questName = questName, order = #entries + 1 }
+            existing = { name = name, kind = kind, questName = questName, order = #entries + 1, quest = true }
             seen[name] = existing
             entries[#entries + 1] = existing
         elseif kind < existing.kind then
@@ -325,20 +339,13 @@ local function nearbyQuestNpcs()
             dist = spawnDistance(db, npcId, where)
         end
         if not dist then return end
-        local entry = { name = name, dist = dist, kind = kind }
+        local entry = { name = name, dist = dist, kind = kind, quest = true }
         entries[#entries + 1] = entry
         seen[name] = entry
     end
 
     for questId in pairs(log) do
-        local quest = questObject(db, log, questId)
-        if readyToTurnIn(db, quest, questId) then
-            -- Ready to hand in, so the turn-in giver is the only actionable NPC.
-            forEachGiverNpc(db, questId, "finishedBy", visit)
-        else
-            -- Still active, so open objectives only: startedBy is moot once accepted and finishedBy is not actionable yet.
-            forEachObjectiveNpc(db, quest, visit)
-        end
+        forEachQuestNpc(db, log, questId, visit)
     end
 
     return closestByPriority(entries)
@@ -405,34 +412,111 @@ function ns.FindSuggestions(query)
     return ok and results or {}
 end
 
+-- The names every quest in the log still needs, by the same rule as the nearby list. Nil while Questie cannot answer, so nothing is dropped on a guess.
+local function openQuestNpcNames()
+    local db = questieDB()
+    local log = questLog()
+    if not db or not log then return nil end
+    local names = {}
+    for questId in pairs(log) do
+        forEachQuestNpc(db, log, questId, function(npcId)
+            local name = npcName(db, npcId)
+            if name then names[name] = true end
+        end)
+    end
+    return names
+end
+
+function ns.OpenQuestNpcNames()
+    local ok, names = guarded(openQuestNpcNames)
+    return ok and names or nil
+end
+
 local function prebuildNameIndex()
     local db = questieDB()
     if db then guarded(buildNpcNameIndex, db) end
 end
 
--- Questie runs ready callbacks inside its own init, so the index pass waits for the next frame.
+-- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login and in a new zone, swaps them for the closest NPCs the quests need; a light one, after a quest update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Quest NPCs off only the drop runs, for NPCs added from a quest suggestion.
+local function syncQuestNpcs(full)
+    if not ns.QuestieReady() then return end
+    local following = TargetFinderCharDB.questNpcs
+    if full and not following then return end
+    if not following and not ns.HasQuestEntries() then return end
+    local open
+    if not full then
+        open = ns.OpenQuestNpcNames()
+        if not open then return end
+    end
+    local wanted = {}
+    if following then
+        local ok, nearby = guarded(nearbyQuestNpcs)
+        if not ok or not nearby then return end
+        wanted = nearby
+    end
+    ns.SyncQuestEntries(wanted, open)
+end
+
+local syncQueued, fullQueued = false, false
+
+-- Questie calls back once per changed objective, after it has updated its objectives and quest log (QuestEventHandler.lua:338, :395, :444 and :588), so a burst of updates runs one sync on the next frame. A full request in the burst wins.
+local function queueSync(full)
+    fullQueued = fullQueued or full
+    if syncQueued then return end
+    syncQueued = true
+    C_Timer.After(0, function()
+        local runFull = fullQueued
+        syncQueued, fullQueued = false, false
+        syncQuestNpcs(runFull)
+    end)
+end
+
+-- Questie runs ready callbacks inside its own init, so the index pass and the first sync wait for the next frame.
 local function onQuestieReady()
     ns.RefreshPanel()
     C_Timer.After(0, prebuildNameIndex)
+    queueSync(true)
 end
+
+local function onQuestUpdate()
+    queueSync(false)
+end
+
+-- A new zone or subzone brings other quest NPCs into reach.
+local zoneFrame = CreateFrame("Frame")
+zoneFrame:RegisterEvent("ZONE_CHANGED")
+zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+zoneFrame:SetScript("OnEvent", function() queueSync(true) end)
 
 -- Questie calls back at once when it is already ready (Public/RegisterOnReady.lua:15), so registering at login never misses the moment.
 function ns.WatchQuestie()
     local api = questieApi()
     if not api or type(api.RegisterOnReady) ~= "function" then return end
     api.RegisterOnReady(onQuestieReady)
+    if type(api.RegisterForQuestUpdates) == "function" then api.RegisterForQuestUpdates(onQuestUpdate) end
 end
 
-function ns.AddNearbyQuestNpcs()
-    if not ns.QuestieReady() then
-        ns.Announce(ns.QuestieExcuse())
+-- The Quest NPCs box. On fills the list at once, off takes every quest entry away. Typed names stay either way.
+function ns.SetQuestNpcs(on)
+    TargetFinderCharDB.questNpcs = on
+    if on then
+        syncQuestNpcs(true)
+    else
+        ns.SyncQuestEntries({})
+    end
+end
+
+-- A quest picked from the suggestions takes the quest rows first. With Quest NPCs on the closest other quest NPCs fill what is left.
+function ns.TrackQuest(questId)
+    local picks = ns.QuestNpcs(questId)
+    if #picks == 0 then
+        ns.Announce("No NPCs found for that quest.")
         return
     end
-    local ok, entries = guarded(nearbyQuestNpcs)
-    if not ok then return end
-    if not entries or #entries == 0 then
-        ns.Announce("Nothing to track here yet.")
+    ns.SyncQuestEntries(picks)
+    if not ns.SlotForName(picks[1].name) then
+        ns.Announce("The list is full. Remove a name first.")
         return
     end
-    ns.ReplaceFinder(entries)
+    syncQuestNpcs(false)
 end

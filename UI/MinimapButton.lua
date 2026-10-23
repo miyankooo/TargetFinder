@@ -1,38 +1,42 @@
 local _, ns = ...
 local UI = LibStub("LibNativeUI-1.0")
 
--- One launcher serves the LibDBIcon minimap button and the Addon Compartment entry LibDBIcon registers, so both share this click and this tooltip.
+-- One launcher serves the LibDBIcon minimap button and the Addon Compartment entry LibDBIcon registers, so both share this click and this tooltip. /tf opens the same window.
 
-local function onLauncherClick(mouseButton)
-    if mouseButton == "LeftButton" then
-        if IsShiftKeyDown() then
-            ns.ClearFinder()
-        else
-            ns.TogglePanel()
-        end
-    elseif mouseButton == "RightButton" then
-        ns.AddNearbyQuestNpcs()
-    end
-end
+local launcher
 
--- Blizzard's tooltip helpers give the lines under the launcher's title the standard colours: green instructions, red for what is missing.
+-- Blizzard's tooltip helpers give the lines under the launcher's title the standard colours: a green instruction, red for what is missing.
 local function fillLauncherTooltip(tooltip)
-    GameTooltip_AddInstructionLine(tooltip, "Left-click to toggle the panel.")
-    GameTooltip_AddInstructionLine(tooltip, "Shift + left-click to clear the unit list.")
-    if ns.QuestieReady() then
-        GameTooltip_AddInstructionLine(tooltip, "Right-click to add nearby quest units.")
-    else
-        GameTooltip_AddDisabledLine(tooltip, "Right-click to add nearby quest units.")
+    GameTooltip_AddInstructionLine(tooltip, "Click to toggle the window.")
+    if not ns.QuestieReady() then
         GameTooltip_AddErrorLine(tooltip, ns.QuestieExcuse())
     end
 end
 
 function ns.SetupMinimapButton()
-    UI.CreateLauncher({
+    launcher = UI.CreateLauncher({
         title = ns.ADDON_NAME,
         icon = ns.ADDON_ICON,
         db = TargetFinderDB.minimap,
-        onClick = onLauncherClick,
+        onClick = function() ns.TogglePanel() end,
         tooltip = fillLauncherTooltip,
     })
 end
+
+-- Only the minimap button hides; the addon menu entry stays as the way back.
+local function toggleMinimapButton()
+    local show = TargetFinderDB.minimap.hide == true
+    launcher.setShown(show)
+    ns.Announce(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
+end
+
+local function onSlash(msg)
+    local arg = ns.Trim(msg)
+    if arg and arg:lower() == "minimap" then
+        toggleMinimapButton()
+    else
+        ns.TogglePanel()
+    end
+end
+
+UI.RegisterSlash("TARGETFINDER", { "/targetfinder", "/tf" }, onSlash)

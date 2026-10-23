@@ -2,116 +2,44 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- Every mutation ends the same way: write the macro, give each new slot's marker to one unit in view (the target when it matches, see Markers.lua), report what happened, and offer the macro book while FIND is still unbound.
-local function reportChange(text, marked)
-    local suffix = marked > 0 and " — " .. marked .. " marked" or ""
-    ns.Announce(text .. suffix)
-    ns.HintMacro(ns.FIND_MACRO)
+-- The open window already shows each change, so chat only speaks for changes made while it is closed. That is one line, ending with the bar reminder after an addition while FIND still needs one.
+local function report(text, remind)
+    if ns.PanelShown() then return end
+    local hint = remind and ns.MacroHint()
+    ns.Announce(hint and (text .. " " .. hint) or text)
 end
 
-function ns.AddFinder(name, kind)
-    if not name then
-        ns.Announce("No target selected.")
-        return
-    end
+-- A name from a unit menu goes first, so FIND prefers what the player just picked. Everything else moves down one slot. A full list gives up its last quest entry, or its last entry when every name was typed.
+function ns.AddFinder(name)
     if ns.SlotForName(name) then
         ns.Announce(name .. " is already tracked.")
-        return
-    end
-    local slot = ns.FirstEmptySlot()
-    if not slot then
-        ns.Announce("Finder is full: " .. table.concat(ns.EntryNames(), ", ") .. ".")
-        return
-    end
-    ns.targets[slot] = ns.MakeEntry(name, kind)
-    ns.WriteFinderMacro()
-    reportChange(table.concat(ns.EntryNames(), ", "), ns.MarkNearbyForSlot(slot))
-end
-
--- Insert at slot 1 so the macro's last /target line wins. Everything else shifts down one slot and a full list drops its lowest-priority entry off the end.
-function ns.AddFinderFirst(name, kind, existingSlot)
-    -- Callers that already matched a slot by prefix pass it in, so the matched entry is promoted instead of gaining a near-duplicate beside it.
-    local promoted = existingSlot and ns.targets[existingSlot]
-    if not promoted and not name then
-        ns.Announce("No target selected.")
-        return
-    end
-
-    local duplicate = existingSlot or ns.SlotForName(name)
-    if duplicate == 1 then
-        ns.Announce((promoted and promoted.name or name) .. " is already first.")
         return
     end
 
     local kept = {}
     for slot = 1, MAX_TARGETS do
-        local entry = ns.targets[slot]
-        if entry and slot ~= duplicate then kept[#kept + 1] = entry end
+        if ns.targets[slot] then kept[#kept + 1] = ns.targets[slot] end
     end
-
-    ns.WipeTargets()
-    ns.targets[1] = promoted or ns.MakeEntry(name, kind)
-    for i = 1, math.min(#kept, MAX_TARGETS - 1) do
-        ns.targets[i + 1] = kept[i]
-    end
-
-    -- Only set when a new name fills a list that was already full, never when promoting in place.
-    local dropped = kept[MAX_TARGETS]
-
-    ns.WriteFinderMacro()
-    reportChange(table.concat(ns.EntryNames(), ", "), ns.RemarkAllSlots())
-
-    if dropped then
-        ns.Announce("List was full, dropped " .. dropped.name .. ".")
-    end
-end
-
-function ns.AddFinderBatch(items)
-    if type(items) ~= "table" or #items == 0 then
-        ns.Announce("Nothing to add.")
-        return
-    end
-
-    local existing = {}
-    for slot = 1, MAX_TARGETS do
-        if ns.targets[slot] then existing[ns.targets[slot].name] = true end
-    end
-
-    local added = {}
-    local newSlots = {}
-    for _, item in ipairs(items) do
-        local name = item.name
-        if name and name ~= "" and not existing[name] then
-            local empty = ns.FirstEmptySlot()
-            if not empty then break end
-            ns.targets[empty] = ns.MakeEntry(name, item.kind)
-            existing[name] = true
-            added[#added + 1] = name
-            newSlots[#newSlots + 1] = empty
+    local dropped
+    if #kept == MAX_TARGETS then
+        local last = #kept
+        for i = #kept, 1, -1 do
+            if kept[i].quest then
+                last = i
+                break
+            end
         end
+        dropped = table.remove(kept, last)
     end
 
-    if #added == 0 then
-        ns.Announce("Already tracking everything from that list.")
-        return
-    end
+    ns.WipeTargets()
+    ns.targets[1] = ns.MakeEntry(name)
+    for i, entry in ipairs(kept) do ns.targets[i + 1] = entry end
 
     ns.WriteFinderMacro()
-    local marked = 0
-    for _, slot in ipairs(newSlots) do
-        marked = marked + ns.MarkNearbyForSlot(slot)
-    end
-    reportChange(table.concat(added, ", "), marked)
-end
-
--- Replace the whole list in one step. Wiping and then adding separately would leave the list empty and the macro stale if the add found nothing to do.
-function ns.ReplaceFinder(items)
-    if type(items) ~= "table" or #items == 0 then
-        ns.Announce("Nothing to add.")
-        return
-    end
-    ns.WipeTargets()
-    ns.AddFinderBatch(items)
+    local text = "Tracking " .. name .. "."
+    if dropped then text = text .. " The list was full, so " .. dropped.name .. " was removed." end
+    report(text, true)
 end
 
 function ns.RemoveFinder(slot)
@@ -119,19 +47,10 @@ function ns.RemoveFinder(slot)
     if not removed then return end
     ns.targets[slot] = nil
     ns.WriteFinderMacro()
-    ns.Announce("Removed: " .. removed.name)
+    report("Removed " .. removed.name .. ".")
 end
 
-function ns.ClearFinder()
-    if ns.TargetCount() == 0 then
-        ns.Announce("Finder is empty.")
-        return
-    end
-    ns.WipeTargets()
-    ns.WriteFinderMacro()
-    ns.Announce("Finder cleared.")
-end
-
+-- A name typed or picked into one row of the open window. It stays until the player removes it, even when a quest needs it, so moving on never takes away a name the player chose.
 function ns.SetSlot(slot, name)
     if not name or name == "" then return end
     local existingSlot = ns.SlotForName(name)
@@ -140,9 +59,29 @@ function ns.SetSlot(slot, name)
         ns.Announce(name .. " is already tracked.")
         return
     end
-    local previous = ns.targets[slot]
     ns.targets[slot] = ns.MakeEntry(name)
     ns.WriteFinderMacro()
-    local text = previous and ("Replaced " .. previous.name .. " with " .. name) or name
-    reportChange(text, ns.MarkNearbyForSlot(slot))
+end
+
+local function listSignature()
+    local names = {}
+    for slot = 1, MAX_TARGETS do
+        local entry = ns.targets[slot]
+        names[slot] = entry and entry.name or ""
+    end
+    return table.concat(names, "\n")
+end
+
+-- Quest entries follow the quest log without a chat line. With open, the names quests still need, only quest entries outside it leave; without it every quest entry makes way. wanted, best first, then fills the free slots. Typed names keep their slots.
+function ns.SyncQuestEntries(wanted, open)
+    local before = listSignature()
+    for slot = 1, MAX_TARGETS do
+        local entry = ns.targets[slot]
+        if entry and entry.quest and not (open and open[entry.name]) then ns.targets[slot] = nil end
+    end
+    for _, item in ipairs(wanted) do
+        local slot = not ns.SlotForName(item.name) and ns.FirstEmptySlot()
+        if slot then ns.targets[slot] = ns.MakeEntry(item.name, true, item.kind) end
+    end
+    if listSignature() ~= before then ns.WriteFinderMacro(true) end
 end

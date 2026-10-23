@@ -1,5 +1,10 @@
 package-as: TargetFinder
+manual-changelog: CHANGELOG.md
 
 ignore:
-  - Tests
   - CLAUDE.md
+  - Tests
+  - Tools
+
+optional-dependencies:
+  - questie

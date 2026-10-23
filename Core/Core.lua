@@ -6,9 +6,9 @@ local UI = LibStub("LibNativeUI-1.0")
 ns.ADDON_NAME = "Target Finder"
 
 ns.FIND_MACRO = "FIND"
-ns.FIND_ICON = "Ability_Hunter_SniperShot"
-ns.ASSIST_MACRO = "ASSIST"
-ns.ASSIST_ICON = "Ability_DualWield"
+
+-- The macro API takes the icon as a file ID, as Blizzard_MacroIconSelector.lua:103-109 passes it. 132212 is ADDON_ICON's file.
+ns.FIND_ICON = 132212
 
 ns.MAX_TARGETS = 8
 ns.MAX_SUGGESTIONS = 8
@@ -17,19 +17,16 @@ ns.MIN_QUERY_LENGTH = 2
 -- The documented nameplate token range. Tokens only resolve while a nameplate is actually shown.
 ns.MAX_NAMEPLATES = 40
 
--- Slot order is priority order, and each slot owns one raid marker for its whole life so a marked mob keeps meaning the same thing.
-ns.FIND_MARKERS = { 8, 6, 2, 1, 7, 4, 3, 5 }
-
--- Ascending value is ascending priority, so a lower number wins when two quests claim the same NPC. Every saved entry stores its kind, so the values never renumber.
---   KILL  mobs that count for a kill objective
---   DROP  mobs that drop a required quest item
---   GIVER quest start and turn-in NPCs
+-- Ascending value is ascending priority, so a lower number wins when two quests claim the same NPC. A quest entry keeps its kind for its row icon.
+--   KILL    mobs that count for a kill objective
+--   DROP    mobs that drop a required quest item
+--   TURNIN  the NPC a finished quest is handed in to
 ns.KIND_KILL = 1
 ns.KIND_DROP = 2
-ns.KIND_GIVER = 4
+ns.KIND_TURNIN = 3
 
 -- The toc's IconTexture, shared by the panel portrait and the minimap button so both read as this addon.
-ns.ADDON_ICON = 132212
+ns.ADDON_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
 ns.MINIMAP_DEFAULT_POS = 215
 
 -- One tagged line per user-visible event in the shared chat voice, so the addon never writes to chat by any other route.

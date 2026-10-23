@@ -7,19 +7,20 @@ local UI = LibStub("LibNativeUI-1.0")
 local POPUP_NAME = "TargetFinderSuggestions"
 local MAX_SUGGESTIONS = ns.MAX_SUGGESTIONS
 
--- Native geometry of Blizzard's AutoCompleteBox (Blizzard_AutoComplete): AutoCompleteButtonTemplate rows are 14px (AutoComplete.xml:17) with text 15px in (:21), AutoCompleteButton1 starts 10px below the border (:52) and the hint sits 10px above the bottom (:40), AutoComplete_Update adds 35px of chrome (AutoComplete.lua:296), and AUTOCOMPLETE_DEFAULT_Y_OFFSET overlaps the edit box by 3px (AutoComplete.lua:130).
-local NATIVE_ROW_HEIGHT = 14
-local NATIVE_TEXT_INSET = 15
-local NATIVE_ROWS_TOP = 10
-local NATIVE_HINT_BOTTOM = 10
-local NATIVE_CHROME = 35
-local NATIVE_OVERLAP = 3
+-- Blizzard's AutoCompleteBox geometry moved onto the 4px grid: its 14px rows (AutoComplete.xml:17) become 16 so the 16px role icon fits, the 15px text inset (:21) 16, the 10px first-row and hint offsets (:52, :40) 8, the 35px chrome (AutoComplete.lua:296) 36 and the 3px edit-box overlap (AutoComplete.lua:130) 4.
+local ROW_HEIGHT = 16
+local TEXT_INSET = 16
+local ROWS_TOP = UI.Space.gap
+local HINT_BOTTOM = UI.Space.gap
+
+-- 8 above the rows, 8 between the rows and the 12px hint line, 8 below it.
+local CHROME = 36
+local OVERLAP = 4
 
 -- Role icons come before the name, one gap clear of it.
-local NAME_INSET = NATIVE_TEXT_INSET + UI.Size.icon + UI.Space.gap
+local NAME_INSET = TEXT_INSET + UI.Size.icon + UI.Space.gap
 
 local QUEST_LABEL = "[Quest] "
-local ADD_ALL_TEXT = "Add All"
 
 local popup
 
@@ -59,15 +60,10 @@ end
 local function activate(input, entry)
     if not entry then return end
     if entry.type == "quest" then
-        local picks = ns.QuestNpcs(entry.questId)
-        if not picks or #picks == 0 then
-            ns.Announce("No NPCs found for that quest.")
-            return
-        end
         input:SetText(input.tfStored or "")
         input:ClearFocus()
         hidePopup(input)
-        ns.AddFinderBatch(picks)
+        ns.TrackQuest(entry.questId)
         return
     end
     local picked = entry.name
@@ -77,7 +73,7 @@ local function activate(input, entry)
     ns.ApplyRowInput(input.slot)
 end
 
--- Enter takes the keyboard selection when there is one, so plain typed text still applies unchanged. Blizzard preselects row 1; this popup does not, because Enter on a typed prefix must store the prefix.
+-- Enter takes the keyboard selection when there is one; with nothing to select the typed text applies unchanged.
 function ns.TakeSelectedSuggestion(input)
     if not isOpenFor(input) then return false end
     local index = popup.selected or 0
@@ -87,56 +83,39 @@ function ns.TakeSelectedSuggestion(input)
     return true
 end
 
-local function queueEntry(picks, seen, name, kind)
-    if name and name ~= "" and not seen[name] then
-        seen[name] = true
-        picks[#picks + 1] = { name = name, kind = kind }
-    end
-end
-
-local function addAllShown(input)
-    if not isOpenFor(input) then
-        ns.Announce("No suggestions to add.")
-        return
-    end
-    local picks = {}
-    local seen = {}
-    for i = 1, popup.count or 0 do
+-- Blizzard's AutoComplete preselects a row so Enter takes a whole name, which FIND needs because it matches names exactly. The NPC whose name the player typed in full wins, otherwise the first NPC row. A quest row is never preselected, because it fills several rows at once.
+local function defaultSelection(typed)
+    local wanted = typed:lower()
+    local first = 0
+    for i = 1, popup.count do
         local entry = popup.rows[i].entry
-        if entry and entry.type == "quest" then
-            for _, questEntry in ipairs(ns.QuestNpcs(entry.questId)) do
-                queueEntry(picks, seen, questEntry.name, questEntry.kind)
-            end
-        elseif entry then
-            queueEntry(picks, seen, entry.name, entry.kind)
+        if entry.type == "npc" then
+            if entry.name:lower() == wanted then return i end
+            if first == 0 then first = i end
         end
     end
-    if #picks == 0 then
-        ns.Announce("No suggestions to add.")
-        return
-    end
-    input:SetText("")
-    input:ClearFocus()
-    hidePopup(input)
-    ns.AddFinderBatch(picks)
+    return first
 end
 
--- The template anchors its text 15px in and lets it run on; here it also stops at the right edge so a long quest name truncates instead of spilling past the border. Rows are named because the template's ButtonText is "$parentText".
+-- The template anchors its text 15px in and lets it run on; here it starts on the grid and stops at the right edge so a long quest name truncates instead of spilling past the border. Rows are named because the template's ButtonText is "$parentText".
 local function buildRow(parent, name)
     local row = CreateFrame("Button", name, parent, "AutoCompleteButtonTemplate")
+    row:SetHeight(ROW_HEIGHT)
     local text = row:GetFontString()
-    text:SetPoint("RIGHT", row, "RIGHT", -NATIVE_TEXT_INSET, 0)
+    text:ClearAllPoints()
+    text:SetPoint("LEFT", row, "LEFT", TEXT_INSET, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -TEXT_INSET, 0)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
     return row
 end
 
--- Full-width rows stacked under each other, the first one NATIVE_ROWS_TOP below the border like AutoCompleteButton1.
+-- Full-width rows stacked under each other, the first one ROWS_TOP below the border like AutoCompleteButton1.
 local function stackRow(row, above)
     row:ClearAllPoints()
     if above == popup then
-        row:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, -NATIVE_ROWS_TOP)
-        row:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, -NATIVE_ROWS_TOP)
+        row:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, -ROWS_TOP)
+        row:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, -ROWS_TOP)
     else
         row:SetPoint("TOPLEFT", above, "BOTTOMLEFT")
         row:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT")
@@ -146,7 +125,7 @@ end
 local function buildQuestIcon(row)
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(UI.Size.icon, UI.Size.icon)
-    icon:SetPoint("LEFT", row, "LEFT", NATIVE_TEXT_INSET, 0)
+    icon:SetPoint("LEFT", row, "LEFT", TEXT_INSET, 0)
     icon:Hide()
     row.icon = icon
     row:GetFontString():SetPoint("LEFT", row, "LEFT", NAME_INSET, 0)
@@ -172,16 +151,9 @@ local function buildPopup()
         above = row
     end
 
-    -- White text marks the footer as an action rather than one more gold name.
-    local addAll = buildRow(popup, POPUP_NAME .. "AddAll")
-    addAll:SetNormalFontObject(UI.Font.body)
-    addAll:SetText(ADD_ALL_TEXT)
-    addAll:SetScript("OnClick", function() addAllShown(popup.owner) end)
-    popup.addAll = addAll
-
     -- AutoComplete_OnLoad tints this hint with a literal light grey; LIGHTGRAY_FONT_COLOR is the colour object for that shade. It uses the 12px muted role, not Blizzard's 10px hint font.
     local hint = UI.CreateText(popup, "muted")
-    hint:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", NATIVE_TEXT_INSET, NATIVE_HINT_BOTTOM)
+    hint:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", TEXT_INSET, HINT_BOTTOM)
     hint:SetText(LIGHTGRAY_FONT_COLOR:WrapTextInColorCode(PRESS_TAB))
 
     return popup
@@ -214,16 +186,16 @@ local function anchorTo(input, height)
     popup:SetFrameStrata(UI.Strata.dialog)
     popup:ClearAllPoints()
     local bottom = input:GetBottom()
-    if bottom and bottom - height <= NATIVE_OVERLAP + NATIVE_ROWS_TOP then
-        popup:SetPoint("BOTTOMLEFT", input, "TOPLEFT", 0, -NATIVE_OVERLAP)
-        popup:SetPoint("BOTTOMRIGHT", input, "TOPRIGHT", 0, -NATIVE_OVERLAP)
+    if bottom and bottom - height <= OVERLAP + ROWS_TOP then
+        popup:SetPoint("BOTTOMLEFT", input, "TOPLEFT", 0, -OVERLAP)
+        popup:SetPoint("BOTTOMRIGHT", input, "TOPRIGHT", 0, -OVERLAP)
     else
-        popup:SetPoint("TOPLEFT", input, "BOTTOMLEFT", 0, NATIVE_OVERLAP)
-        popup:SetPoint("TOPRIGHT", input, "BOTTOMRIGHT", 0, NATIVE_OVERLAP)
+        popup:SetPoint("TOPLEFT", input, "BOTTOMLEFT", 0, OVERLAP)
+        popup:SetPoint("TOPRIGHT", input, "BOTTOMRIGHT", 0, OVERLAP)
     end
 end
 
-local function showSuggestions(input, list)
+local function showSuggestions(input, list, typed)
     buildPopup()
     local count = math.min(#list, MAX_SUGGESTIONS)
     if count == 0 then
@@ -242,10 +214,9 @@ local function showSuggestions(input, list)
             row:Hide()
         end
     end
-    setSelection(0)
-    stackRow(popup.addAll, popup.rows[count])
+    setSelection(defaultSelection(typed))
 
-    local height = (count + 1) * NATIVE_ROW_HEIGHT + NATIVE_CHROME
+    local height = count * ROW_HEIGHT + CHROME
     popup:SetHeight(height)
     anchorTo(input, height)
     popup:Show()
@@ -295,7 +266,7 @@ function ns.AttachAutocomplete(input, onChange)
             hidePopup(self)
             return
         end
-        showSuggestions(self, ns.FindSuggestions(typed))
+        showSuggestions(self, ns.FindSuggestions(typed), typed)
     end)
     -- A click on a suggestion drops focus before the click resolves, so the hide waits out the click.
     input:SetScript("OnEditFocusLost", function(self)

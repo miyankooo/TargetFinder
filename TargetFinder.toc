@@ -1,10 +1,10 @@
 ## Interface: 16001
 ## Title: Target Finder
-## Notes: Build a list of named NPCs and press one macro to target and auto-mark the next relevant one, with quest-aware search when Questie is installed.
+## Notes: One macro targets and marks the NPCs your quests need, plus any NPC you add.
 ## Author: miyanko
-## Version: 4.0.0
-## Category: Combat
-## IconTexture: 132212
+## Version: 1.0.0
+## Category: Quests
+## IconTexture: Interface\Icons\Ability_Hunter_SniperShot
 ## OptionalDeps: Questie
 ## SavedVariables: TargetFinderDB
 ## SavedVariablesPerCharacter: TargetFinderCharDB
@@ -18,7 +18,6 @@ Libs\LibNativeUI-1.0\LibNativeUI-1.0.lua
 Core\Core.lua
 Core\Secrets.lua
 Core\Store.lua
-Core\Markers.lua
 Core\Macro.lua
 Core\Targets.lua
 Core\Quest.lua
