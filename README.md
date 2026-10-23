@@ -1,149 +1,70 @@
-# TargetFinder
+# Target Finder
 
-Build a list of up to eight named NPCs and press one macro to target and auto-mark the next relevant one. Quest-aware search and proximity-based "add nearby" when Questie is installed; a plain manual list when it isn't.
-
-Built for **WoW Forever 1.60**. The panel, buttons and popups are Blizzard's own templates, laid out by the shared LibNativeUI-1.0 design system on an 8 px grid with 12 px text.
+Press one macro to target the NPCs your quests need or any NPC you add. It puts a skull on the target.
 
 ## Features
 
-- **One FIND macro**: a `/target` chain written in reverse, so slot 1 wins when several tracked NPCs are in range. `/target` does nothing when no name matches, so FIND never clears your target and never grabs an off-list mob. Spam it to move through your NPCs as they come into range.
-- **Automatic raid markers**: each slot owns one marker. It is applied when you acquire that NPC by macro, tab or click. Filling a slot also marks one matching unit already in view.
-- **Add Nearby Quest Units**: fills the list from your quest log with the closest open objectives, kill and drop targets first, or the turn-in NPC once Questie counts the quest complete.
-- **Quest-aware search**: the slot input suggests NPC names from Questie's database and quest names from your log, tagged by role.
-- **Right-click menu**: Track, Track First, Untrack and Clear on unit frames, plus an **ASSIST** macro for party and raid members.
-- **Launchers**: a minimap button, an entry in the addon menu under the minimap, and `/tf` (or `/targetfinder`).
+- One FIND macro targets the first NPC on your list that is in range. It targets the way RestedXP's targeting macro does: exact names and a step back to your previous target when the pick is a corpse.
+- FIND puts a skull on the enemy it targets, through the game's own `/tm` command.
+- With Quest NPCs ticked, free rows fill with the kill, loot and turn-in NPCs of your quests that are closest to you. They change with your quests and the zone you are in.
+- Names you add stay until you remove them: typed, picked from the suggestions or tracked from a unit's menu.
+- Name suggestions from Questie's database while you type. A quest suggestion puts that quest's NPCs first.
+- Track and Untrack in the right-click menu of NPC and enemy unit frames.
+- A minimap button, an entry in the addon menu and `/tf`.
 
 ## Installation
 
-1. Copy the `TargetFinder/` folder into `World of Warcraft/_classic_beta_/Interface/AddOns/`.
-2. Restart the game or `/reload`.
-3. Enable **Target Finder** in the AddOns list.
+1. Install it with the CurseForge app under WoW Forever, or copy the `TargetFinder` folder into `World of Warcraft/_forever_/Interface/AddOns/`.
+2. Restart the game or type `/reload`.
+3. Enable Target Finder in the AddOns list.
 
 ## Usage
 
-1. Left-click the minimap icon, or type `/tf`, to open the **Target Finder** panel.
-2. Type an NPC or quest name into a slot and press Enter or **Add**, or click **Add Nearby Quest Units**.
-3. The addon opens the macro book and pulses **FIND** until it is on a bar. Drag it onto your action bar.
-4. Press FIND to target and mark. Press it again to move to the next NPC.
+1. Type `/tf` or click the minimap button to open the window.
+2. Drag the icon in the window's top-left corner to an action bar. That button is FIND.
+3. Press FIND to target the first NPC on the list that is in range. Press it again for the next one.
 
-`/tf` and `/targetfinder` toggle the panel. Everything else lives in the UI.
+Row 1 wins when several NPCs are in range. A quest row shows Questie's kill, loot or turn-in icon. A row you filled shows none.
 
-### Panel
+To add your own NPC, type its name into a row or use Track in its right-click menu. While you type, the first NPC suggestion is highlighted, so Enter takes its full name. Up and Down pick another one and Tab completes the name without storing it.
 
-A standard Blizzard window with the addon icon as its portrait. Drag it by the title bar, close it with Escape or the corner button.
+## Commands
 
-- Each slot shows its raid marker, the tracked name and a close button to remove it.
-- While you type a new name, the close button turns into **Add**.
-- **Add Nearby Quest Units** (bottom right) replaces the list. Its tooltip says why when it is disabled.
-- **Clear Unit List** (next to it) empties the list.
+| Command | Does |
+| --- | --- |
+| `/tf` | Opens or closes the window |
+| `/tf minimap` | Hides or shows the minimap button |
 
-### Suggestions
-
-Suggestions open under the slot you type in, styled like Blizzard's own name autocomplete.
-
-- Up and Down pick a row, Enter stores it. With nothing picked, Enter stores exactly what you typed.
-- Tab completes the picked NPC name, or the first one, into the box without storing it.
-- A `[Quest]` row adds every NPC tied to that quest at once.
-- **Add All** adds every visible suggestion, expanding quest rows.
-- Names that start with what you typed come before names that only contain it, because only the first kind is something FIND can acquire.
-
-### Minimap button and addon menu
-
-The minimap button and its entry in the addon menu are one launcher, so they share the clicks and the tooltip.
-
-- **Left-click**: toggle the panel.
-- **Shift + left-click**: clear the unit list.
-- **Right-click**: add nearby quest units.
-
-The tooltip tells Questie being absent apart from Questie still loading, which fixes itself a few seconds after login. The quest features switch on by themselves once Questie reports it is ready.
-
-### Right-click unit menu
-
-A **Target Finder** section at the bottom of unit-frame menus:
-
-- **Assist**: only for friendly players in your party or raid. Writes an **ASSIST** macro with `/assist NAME`.
-- **Track First**: puts this NPC in slot 1 and shifts the rest down. A full list drops slot 8 and names it in chat.
-- **Track**: adds this NPC to the next empty slot.
-- **Untrack**: removes the entry that covers this NPC.
-- **Clear Unit List**: behind its own divider, so it is not a misclick away from Untrack.
-
-The menu matches by name prefix, so with `Auctioneer` tracked every `Auctioneer <something>` counts as covered. Track First and Untrack then act on the `Auctioneer` entry, never on a near-duplicate.
-
-## Markers
-
-The eight slots map to markers in this order:
-
-| Slot | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Marker | Skull | Square | Circle | Star | Cross | Triangle | Diamond | Moon |
-
-A raid marker sits on one unit at a time, so each slot marks exactly one:
-
-1. your current target, when its name belongs to that slot
-2. otherwise a visible nameplate that already carries the marker, so a marked mob keeps it
-3. otherwise the first matching nameplate
-
-When the client hides raid marker indexes from addons, only your current target is marked, so the marker never jumps off a mob that already has it.
-
-A unit belongs to the first slot whose name covers it, so `Kobold` in slot 1 and `Kobold Miner` in slot 2 never fight over one mob. The chat line after an add counts one unit per slot that found a match.
-
-## Search roles
-
-| Icon | Role | Source |
-| --- | --- | --- |
-| Questie's sword | Kill | Kill objectives and kill-credit alternates |
-| Questie's bag | Drop | NPCs that drop items your objectives need |
-| Questie's `!` | Quest giver | Quest start and turn-in NPCs |
-
-Objectives Questie already counts as done are left out.
-
-## Add Nearby Quest Units
-
-Candidates come from your quest log, as Questie sees it:
-
-- **Quests still in progress**: kill targets and item droppers for the objectives Questie still counts as open.
-- **Quests Questie counts as complete**: the turn-in NPC only.
-
-Only NPCs that spawn in your current zone, or already show a nameplate, qualify. The closest eight are kept, then ordered Kill, Drop, Turn-in, with distance as the tiebreak. If nothing qualifies, chat says `Nothing to track here yet.`
+`/targetfinder` works as well.
 
 ## Requirements
 
-| Client | Interface | Questie |
-| --- | --- | --- |
-| WoW Forever 1.60 | `16001` | Questie 12 with the **QuestieDB** addon |
+WoW Forever 1.60.x (Interface `16001`).
 
-Questie is optional. Without it the addon works as a manual list, and name suggestions and **Add Nearby Quest Units** are unavailable. Questie is the only quest data source: names, spawns, drops, givers and objective progress all come from it. The native quest API is not used for quest data.
+[Questie](https://www.curseforge.com/wow/addons/questie) is optional. Without it Target Finder works as a plain list. Suggestions and Quest NPCs are off.
 
 ## Restrictions
 
-- Macros cannot be written in combat. Writes made in combat are queued and replayed when you leave it, with one on-screen notice per fight.
-- Names match from the start, like `/target`. Tracking `Auctioneer` covers `Auctioneer Chillgular`; tracking `Chillgular` does not, because FIND could never acquire it.
-- Blizzard decides who may set raid markers in a group. When you may not, the markers simply do not appear.
-- Restricted content can hide unit names and identities from addons. The addon then skips marking that unit and withholds **Assist**; everything else keeps working.
-- If a Questie update changes something the addon reads, you get one chat line naming the problem instead of Lua errors, and the Questie features stay off until an update.
+FIND matches whole names, like `/targetexact`. Pick names from the suggestions to get them right.
 
-## Saved data
+Targeting by name can't choose between mobs that share a name, so a corpse can still hide a living mob of the same name.
 
-Your tracked NPC list is saved per character; the minimap icon position is saved per account.
+Macros can't be changed in combat. A change made in combat updates FIND when combat ends.
+
+FIND is a character macro and needs a free character macro slot.
+
+In a group, only the party leader, the raid leader or a raid assistant gets the skull.
+
+If a Questie update changes something Target Finder reads, one chat line names the problem and the quest features stay off until an update.
 
 ## Development
 
-The offline suite loads the addon in toc order against a client stub and a small fake Questie: `cd Tests && lua Tests.lua`. It proves logic and wiring, not client rendering.
+The offline suite loads the addon in toc order against a client stub and a small fake Questie. It checks logic and wiring, not how the game draws the window.
 
-| Path | Holds |
-| --- | --- |
-| `TargetFinder.toc` | `## Interface: 16001` and the load order |
-| `TargetFinder.lua` | Bootstrap: saved variables and the three events |
-| `Core/Core.lua` | Shared constants and the chat line, through LibNativeUI's `UI.Print` |
-| `Core/Secrets.lua` | Guards for unit names and identities the client may hide |
-| `Core/Store.lua` | The slot table, the name rule, saved-variable adoption |
-| `Core/Markers.lua` | Raid markers, one unit per marker |
-| `Core/Macro.lua` | FIND and ASSIST macros, combat queue, macro-book hint |
-| `Core/Targets.lua` | List changes |
-| `Core/Quest.lua` | Questie integration, the only quest data source |
-| `Core/UnitMenu.lua` | Unit menu entries |
-| `UI/Suggestions.lua` | The autocomplete popup |
-| `UI/Panel.lua` | The panel and its slot rows |
-| `UI/MinimapButton.lua` | The launcher: minimap button and addon-menu entry |
-| `Libs/` | LibStub, CallbackHandler-1.0, LibDataBroker-1.1 and LibDBIcon-1.0 for the minimap button and addon menu, and LibNativeUI-1.0, the shared design system the window, launcher and slash command are built from |
-| `.pkgmeta` | Packaging; leaves `Tests` out |
+```sh
+cd Tests && lua Tests.lua
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

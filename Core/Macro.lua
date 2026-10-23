@@ -2,47 +2,65 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 local MACRO_LIMIT = 255
-local GLOW_SECONDS = 4
-local ACCOUNT_MACRO_CAP = Constants.MacroConsts.MAX_ACCOUNT_MACROS
+local CHARACTER_MACRO_CAP = Constants.MacroConsts.MAX_CHARACTER_MACROS
 
 -- Bars 1-6 fill slots 1-72 and MultiBar5-7 add 145-180. An unused slot simply reads back nil.
 local ACTION_SLOT_COUNT = 180
 
--- Write the macro, then read the index back instead of trusting a return value. CreateMacro is a C function with no generated documentation, and at the account-macro cap it fails without telling the caller; the read-back settles it.
+-- The marker FIND puts on its pick. The "!" prefix makes Blizzard's /tm handler leave a skull that is already there instead of toggling it off (Blizzard_ChatFrameBase/Shared/SlashCommands.lua:1457-1463).
+local SKULL = 8
+
+-- Write the macro, then read the index back. CreateMacro returns the new index, but it has no generated documentation and may raise at the cap, so the protected call and the read-back settle success. FIND is a character macro, because the list and the action bars are per character.
 local function setMacro(name, icon, body)
     local index = GetMacroIndexByName(name)
     if index and index > 0 then
         EditMacro(index, name, icon, body)
     else
-        CreateMacro(name, icon, body, nil)
+        pcall(CreateMacro, name, icon, body, true)
     end
     local written = GetMacroIndexByName(name)
     return written ~= nil and written > 0
 end
 
--- One /target per slot, in REVERSE so slot 1 lands on the last line and wins. /target matches a name prefix and is a no-op when nothing matches, so the macro never clears the current target and never grabs an off-list mob. On overflow at the 255-character cap the lowest-priority lines drop off the top.
+-- In a raid only the leader and assistants mark. In a party marks belong to the leader, so FIND never moves a marker someone else placed. UnitIsGroupLeader is SecretWhenUnitIdentityRestricted (UnitDocumentation.lua:2039), so a hidden answer counts as no.
+local function canMark()
+    if not IsInGroup() then return true end
+    if ns.IdentitySecret("player") then return false end
+    if UnitIsGroupLeader("player") then return true end
+    return IsInRaid() and UnitIsGroupAssistant("player")
+end
+
+-- Whether the last body carries the marker line, so a group change rewrites FIND only when that flips.
+local marking
+
+-- RestedXP's targeting macro (RXPGuides Targeting.lua, UpdateMacro): one /targetexact per slot in REVERSE, so slot 1 is the last line and wins, then /targetlasttarget [dead] steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. The skull goes on through /tm, the secure path, because on Forever the addon may not call SetRaidTarget itself (HasRestrictions, RaidMarkersDocumentation.lua:116). On overflow at the 255-character cap the lowest-priority lines drop off the top.
 local function buildFindBody()
     local ordered = {}
     for slot = 1, MAX_TARGETS do
         if ns.targets[slot] then ordered[#ordered + 1] = ns.targets[slot] end
     end
 
+    marking = canMark()
+
     -- A comment-only body, so pressing FIND with an empty list leaves the current target alone instead of clearing it.
     if #ordered == 0 then return "// " .. ns.ADDON_NAME .. " - no targets" end
 
+    local tail = "\n/targetlasttarget [dead]"
+    if marking then tail = tail .. "\n/tm [harm,nodead] !" .. SKULL end
+
     local lines = {}
     for i = #ordered, 1, -1 do
-        lines[#lines + 1] = "/target " .. ordered[i].name
+        lines[#lines + 1] = "/targetexact " .. ordered[i].name
     end
-    local body = table.concat(lines, "\n")
+    local body = table.concat(lines, "\n") .. tail
     while #body > MACRO_LIMIT and #lines > 1 do
         table.remove(lines, 1)
-        body = table.concat(lines, "\n")
+        body = table.concat(lines, "\n") .. tail
     end
     return body
 end
 
--- EditMacro and CreateMacro are blocked in combat, so a write made then is stashed and replayed on PLAYER_REGEN_ENABLED. The on-screen red notice fires once per combat session to keep chat clean.
+-- EditMacro and CreateMacro are blocked in combat, so a write made then is stashed and replayed on PLAYER_REGEN_ENABLED. The on-screen red notice fires once per combat session and only for the player's own changes, since quest updates land in nearly every fight.
 local pendingMacros = {}
 local notifiedCombat = false
 local capWarned = false
@@ -50,31 +68,43 @@ local capWarned = false
 local function warnMacroCap(name)
     if capWarned then return end
     capWarned = true
-    ns.Announce("Could not write the " .. name .. " macro. The account macro list is full ("
-        .. ACCOUNT_MACRO_CAP .. "); delete one and try again.")
+    ns.Announce("Could not write the " .. name .. " macro, because this character has " .. CHARACTER_MACRO_CAP
+        .. " macros. Delete one in the macro book (/m) and try again.")
 end
 
--- Returns true when the macro was written, false when combat deferred it or the cap refused it.
-local function queueMacro(name, icon, body)
+local function queueMacro(name, icon, body, quiet)
     if InCombatLockdown() then
         pendingMacros[name] = { icon = icon, body = body }
-        if not notifiedCombat then
+        if not quiet and not notifiedCombat then
             notifiedCombat = true
-            UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": leave combat to update macros.", RED_FONT_COLOR:GetRGB())
+            UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": FIND updates after combat.", RED_FONT_COLOR:GetRGB())
         end
-        return false
+        return
     end
-    if not setMacro(name, icon, body) then
+    if setMacro(name, icon, body) then
+        capWarned = false
+    else
         warnMacroCap(name)
-        return false
     end
-    capWarned = false
-    return true
 end
 
-local combatFrame = CreateFrame("Frame")
-combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-combatFrame:SetScript("OnEvent", function()
+-- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. editOnly marks a change the player did not make, such as a quest update or a group change. It only edits an existing FIND, so only the player's own action creates one and a write at login can never leave two.
+function ns.WriteFinderMacro(editOnly)
+    if not editOnly or GetMacroIndexByName(ns.FIND_MACRO) > 0 then
+        queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody(), editOnly)
+    end
+    ns.RefreshPanel()
+end
+
+local events = CreateFrame("Frame")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("PARTY_LEADER_CHANGED")
+events:SetScript("OnEvent", function(_, event)
+    if event ~= "PLAYER_REGEN_ENABLED" then
+        if canMark() ~= marking then ns.WriteFinderMacro(true) end
+        return
+    end
     notifiedCombat = false
     if next(pendingMacros) == nil then return end
     local queued = pendingMacros
@@ -85,14 +115,10 @@ combatFrame:SetScript("OnEvent", function()
     ns.RefreshPanel()
 end)
 
--- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table.
-function ns.WriteFinderMacro()
-    queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody())
-    ns.RefreshPanel()
-end
-
-local function isMacroOnBar(absIndex)
-    if not absIndex or absIndex == 0 then return false end
+-- Whether FIND sits on any action bar, which picks the window's help line and the one chat reminder.
+function ns.FinderOnBar()
+    local absIndex = GetMacroIndexByName(ns.FIND_MACRO)
+    if absIndex == 0 then return false end
     for slot = 1, ACTION_SLOT_COUNT do
         local kind, id = GetActionInfo(slot)
         if kind == "macro" and id == absIndex then return true end
@@ -100,73 +126,19 @@ local function isMacroOnBar(absIndex)
     return false
 end
 
-local function buildGlow(button)
-    if button.tfGlow then return button.tfGlow end
-    local glow = button:CreateTexture(nil, "OVERLAY")
-    glow:SetAtlas("bags-newitem", true)
-    glow:SetBlendMode("ADD")
-    glow:SetPoint("CENTER", button, "CENTER")
-    local w, h = button:GetSize()
-    glow:SetSize(w * 1.4, h * 1.4)
-    glow:SetAlpha(0)
-
-    local anim = glow:CreateAnimationGroup()
-    anim:SetLooping("REPEAT")
-    local fadeIn = anim:CreateAnimation("Alpha")
-    fadeIn:SetFromAlpha(0)
-    fadeIn:SetToAlpha(1)
-    fadeIn:SetDuration(0.35)
-    fadeIn:SetOrder(1)
-    local fadeOut = anim:CreateAnimation("Alpha")
-    fadeOut:SetFromAlpha(1)
-    fadeOut:SetToAlpha(0)
-    fadeOut:SetDuration(0.35)
-    fadeOut:SetOrder(2)
-
-    glow.anim = anim
-    button.tfGlow = glow
-    return glow
-end
-
--- A token per pulse, so a second pulse before the first expires does not let the older timer stop the newer glow.
-local function pulseGlow(button)
-    local glow = buildGlow(button)
-    glow.token = (glow.token or 0) + 1
-    local token = glow.token
-    glow:Show()
-    if not glow.anim:IsPlaying() then glow.anim:Play() end
-    C_Timer.After(GLOW_SECONDS, function()
-        if glow.token ~= token then return end
-        glow.anim:Stop()
-        glow:SetAlpha(0)
-        glow:Hide()
-    end)
-end
-
--- SelectMacro's index is relative to the selected tab, so an account macro past the cap belongs to tab 2.
-local function focusMacro(absIndex)
-    local tabID = absIndex <= ACCOUNT_MACRO_CAP and 1 or 2
-    local relative = absIndex - (tabID == 1 and 0 or ACCOUNT_MACRO_CAP)
-    MacroFrame:ChangeTab(tabID)
-    MacroFrame:SelectMacro(relative, true)
-    pulseGlow(MacroFrame.SelectedMacroButton)
-end
-
--- Open the macro book and pulse the macro, but only while it is still not on a bar, so the hint stops once the player has dragged it out.
-function ns.HintMacro(name)
+-- The window's icon hands FIND to the cursor, so the player drops it on a bar without opening the macro book. The first drag creates FIND.
+function ns.PickupFinder()
     if InCombatLockdown() then return end
-    local absIndex = GetMacroIndexByName(name)
-    if not absIndex or absIndex == 0 then return end
-    if isMacroOnBar(absIndex) then return end
-
-    -- ShowMacroFrame loads Blizzard_MacroUI synchronously; MacroFrame is only missing when that load failed.
-    ShowMacroFrame()
-    if MacroFrame then focusMacro(absIndex) end
+    ns.WriteFinderMacro()
+    local index = GetMacroIndexByName(ns.FIND_MACRO)
+    if index > 0 then PickupMacro(index) end
 end
 
-function ns.SetAssistTarget(name)
-    if not name or name == "" then return end
-    if not queueMacro(ns.ASSIST_MACRO, ns.ASSIST_ICON, "/assist " .. name) then return end
-    ns.Announce("Assisting " .. name .. ".")
-    ns.HintMacro(ns.ASSIST_MACRO)
+local reminded = false
+
+-- Once per session, while FIND sits on no bar, a chat line ends with where to get it. The open window's help line says the same.
+function ns.MacroHint()
+    if reminded or ns.FinderOnBar() then return nil end
+    reminded = true
+    return "Drag FIND from the Target Finder window (/tf) to an action bar."
 end

@@ -2,21 +2,17 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- Sparse slot table indexed 1..MAX_TARGETS, nil meaning empty, each entry { name, kind }. Created once and only ever mutated, because every module captures this reference at load time and a reassignment would leave them pointing at the old table.
+local KINDS = { [ns.KIND_KILL] = true, [ns.KIND_DROP] = true, [ns.KIND_TURNIN] = true }
+
+-- Sparse slot table indexed 1..MAX_TARGETS, nil meaning empty, each entry { name, quest, kind }. Created once and only ever mutated, because every module captures this reference at load time and a reassignment would leave them pointing at the old table.
 local targets = {}
 
 ns.targets = targets
 
-function ns.MakeEntry(name, kind)
-    return { name = name, kind = kind or ns.KIND_GIVER }
-end
-
--- /target acquires the first nearby unit whose name BEGINS with the typed text, so marking and menu matching use the same prefix rule. Substring matching would claim units the macro can never reach: "Chillgular" would mark and offer Untrack on "Auctioneer Chillgular" while FIND never acquired it.
-function ns.NameMatches(unitName, entryName)
-    if not unitName or not entryName then return false end
-    local lowered = unitName:lower()
-    local prefix = entryName:lower()
-    return lowered:sub(1, #prefix) == prefix
+-- quest marks an entry that came from the quest log, so it may drop off once Questie counts it done. kind picks its row icon. Typed entries leave both nil and are never dropped.
+function ns.MakeEntry(name, quest, kind)
+    local fromQuest = quest == true or nil
+    return { name = name, quest = fromQuest, kind = fromQuest and KINDS[kind] and kind or nil }
 end
 
 function ns.TargetCount()
@@ -34,7 +30,7 @@ function ns.FirstEmptySlot()
     return nil
 end
 
--- Exact name lookup, for deciding whether a typed name is already stored.
+-- FIND targets names exactly, as /targetexact does, so a unit belongs to the entry that carries its whole name.
 function ns.SlotForName(name)
     if not name then return nil end
     for slot = 1, MAX_TARGETS do
@@ -44,22 +40,12 @@ function ns.SlotForName(name)
     return nil
 end
 
--- Prefix lookup, for deciding whether a unit the player is looking at is already covered by a stored entry.
-function ns.SlotCovering(unitName)
-    if not unitName then return nil end
+-- Lets the quest-update check skip its walk over the quest log while no entry came from it.
+function ns.HasQuestEntries()
     for slot = 1, MAX_TARGETS do
-        local entry = targets[slot]
-        if entry and ns.NameMatches(unitName, entry.name) then return slot end
+        if targets[slot] and targets[slot].quest then return true end
     end
-    return nil
-end
-
-function ns.EntryNames()
-    local out = {}
-    for slot = 1, MAX_TARGETS do
-        if targets[slot] then out[#out + 1] = targets[slot].name end
-    end
-    return out
+    return false
 end
 
 function ns.WipeTargets()
@@ -73,7 +59,7 @@ function ns.AdoptSaved(saved)
         for slot = 1, MAX_TARGETS do
             local entry = saved[slot]
             if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
-                targets[slot] = ns.MakeEntry(entry.name, tonumber(entry.kind))
+                targets[slot] = ns.MakeEntry(entry.name, entry.quest, entry.kind)
             end
         end
     end

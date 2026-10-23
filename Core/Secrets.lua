@@ -9,16 +9,10 @@ function ns.CanAccess(value)
     return ok and accessible == true
 end
 
--- Ask before reading rather than testing the result: UnitInRaid returns a secret boolean under an identity restriction, and an if-test on a secret raises in tainted code. UnitExists first, because callers may pass a character name where no unit token exists.
+-- Ask before reading rather than testing the result: identity reads such as UnitIsGroupLeader return a secret under an identity restriction, and an if-test on a secret raises in tainted code.
 function ns.IdentitySecret(token)
     if not token or not UnitExists(token) then return false end
     return C_Secrets.ShouldUnitIdentityBeSecret(token) == true
-end
-
--- UnitIsUnit is SecretWhenUnitComparisonRestricted (UnitDocumentation.lua:2413), a restriction separate from identity, so a comparison is asked about before it runs.
-function ns.ComparisonSecret(token, other)
-    if not token or not UnitExists(token) then return false end
-    return C_Secrets.ShouldUnitComparisonBeSecret(token, other) == true
 end
 
 -- A unit's name, or nil when the client hides it from addons.

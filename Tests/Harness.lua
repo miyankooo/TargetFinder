@@ -4,7 +4,7 @@
 -- and the pure logic (matching, macro building, list operations, menu assembly) behaves.
 --
 -- What it cannot prove: anything the real client decides. Secret-value activation,
--- /target's own matching, raid marker permissions, nameplate availability, saved
+-- /targetexact's own matching, /tm in a macro, nameplate availability, saved
 -- variable persistence and every pixel of the UI still need an in-game pass.
 --
 -- Run with:  cd Tests && lua Tests.lua
@@ -22,7 +22,7 @@ local function note(...) log[#log+1] = table.concat({...}, " ") end
 
 -- === world state the tests manipulate ===
 W = {
-    units = {},            -- token -> {name=, player=bool, secret=bool}
+    units = {},            -- token -> {name=, player=bool, secret=bool, dead=bool, guid=}
     marks = {},            -- token -> marker index
     macros = {},           -- name -> {icon=, body=}
     macroOrder = {},
@@ -35,6 +35,11 @@ W = {
     nilChecks = 0,         -- canaccessvalue calls that passed nil
     markCalls = 0,         -- SetRaidTarget calls
     readyCallbacks = {},   -- functions handed to Questie.API.RegisterOnReady
+    questCallbacks = {},   -- functions handed to Questie.API.RegisterForQuestUpdates
+    group = nil,           -- nil solo, "party" or "raid"
+    leader = false,        -- the player leads the group
+    assistant = false,     -- the player is a raid assistant
+    restrictions = {},     -- Enum.AddOnRestrictionType value -> active
     created = {},          -- every frame CreateFrame returned, in order
     tooltip = {},          -- lines the GameTooltip_* helpers added
 }
@@ -55,7 +60,7 @@ local function newRegion(kind)
         local f = function(self, ...)
             self.calls[#self.calls+1] = k
             if k == "GetSize" then return 22, 22 end
-            if k == "GetStringWidth" or k == "GetStringHeight" then return 10 end
+            if k == "GetStringWidth" or k == "GetStringHeight" or k == "GetTextWidth" then return 10 end
             if k == "IsShown" or k == "IsPlaying" or k == "HasFocus" or k == "IsEnabled" then return false end
             if k == "GetText" then return self.text or "" end
             if k == "GetParent" then return self.parent end
@@ -84,6 +89,7 @@ function CreateFrame(kind, name, parent, template)
     end
     f.ClearAllPoints = function(self) self.points = {}; return self end
     f.SetSize = function(self, w, h) self.width, self.height = w, h; return self end
+    f.SetHeight = function(self, h) self.height = h; return self end
     f.SetFrameStrata = function(self, strata) self.strata = strata; return self end
     f.SetScript = function(self, ev, fn) self.scripts[ev] = fn; return self end
     f.GetScript = function(self, ev) return self.scripts[ev] end
@@ -100,6 +106,8 @@ function CreateFrame(kind, name, parent, template)
         t.SetAtlas = function(s, a) s.atlas = a; return s end
         t.Show = function(s) s.shown = true; return s end
         t.Hide = function(s) s.shown = false; return s end
+        t.SetAlpha = function(s, a) s.alpha = a; return s end
+        t.SetDesaturated = function(s, d) s.desaturated = d; return s end
         t.CreateAnimationGroup = function(s)
             local g = newRegion("AnimGroup")
             g.CreateAnimation = function() return newRegion("Anim") end
@@ -134,9 +142,20 @@ function CreateFrame(kind, name, parent, template)
     if kind == "Button" then
         f.SetText = function(self, v) self.text = v; return self end
     end
+    if kind == "CheckButton" then
+        f.SetChecked = function(self, v) self.checked = v; return self end
+        f.GetChecked = function(self) return self.checked == true end
+    end
+    -- CheckboxWithLabelTemplate carries its label as .Text
+    if template == "CheckboxWithLabelTemplate" then
+        f.Text = f:CreateFontString()
+    end
     -- ButtonFrameTemplate hands its content well out as .Inset, with PortraitFrameMixin's title and portrait setters
     if template == "ButtonFrameTemplate" then
         f.Inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
+        f.PortraitContainer = CreateFrame("Frame", nil, f)
+        f.PortraitContainer.portrait = f.PortraitContainer:CreateTexture()
+        f.GetPortrait = function(self) return self.PortraitContainer.portrait end
         f.SetTitle = function(self, t) self.title = t; return self end
         f.SetPortraitToAsset = function(self, asset) self.portraitAsset = asset; return self end
     end
@@ -157,15 +176,28 @@ end
 function UnitIsFriend(a, b) local x = W.units[b]; return x ~= nil and x.friend == true end
 function UnitInParty(u) local x = W.units[u]; return x ~= nil and x.party == true end
 function UnitInRaid(u) local x = W.units[u]; return x ~= nil and x.raid == true end
+function UnitIsDead(u) local x = W.units[u]; return x ~= nil and x.dead == true end
+-- one GUID per token and name, so the same mob seen through two tokens only matches when a test says so
+function UnitGUID(u) local x = W.units[u]; return x and (x.guid or ("Creature-" .. u .. "-" .. x.name)) end
+function IsInGroup() return W.group ~= nil end
+function IsInRaid() return W.group == "raid" end
+function UnitIsGroupLeader() return W.leader == true end
+function UnitIsGroupAssistant() return W.assistant == true end
+C_RestrictedActions = { IsAddOnRestrictionActive = function(t) return W.restrictions[t] == true end }
+Enum = { AddOnRestrictionType = { Combat = 0, Encounter = 1, ChallengeMode = 2, PvPMatch = 3, Map = 4, Chat = 5 } }
 
 local SECRET = { __secret = true }
 function GetRaidTargetIndex(u)
     if W.markersSecret then return SECRET end
     return W.marks[u]
 end
--- a raid marker lives on one unit at a time, so setting it elsewhere moves it
+-- a raid marker lives on one unit at a time, so setting it elsewhere moves it, and setting it again toggles it off
 function SetRaidTarget(u, m)
     W.markCalls = W.markCalls + 1
+    if W.marks[u] == m then
+        W.marks[u] = nil
+        return
+    end
     for other, marker in pairs(W.marks) do
         if marker == m then W.marks[other] = nil end
     end
@@ -173,24 +205,23 @@ function SetRaidTarget(u, m)
 end
 function SetRaidTargetIconTexture(tex, idx) tex.markerCell = idx end
 
-function GetTime() W.clock = (W.clock or 0) + 10; return W.clock end
 function InCombatLockdown() return W.inCombat == true end
 
 function GetMacroIndexByName(n)
     for i, name in ipairs(W.macroOrder) do if name == n then return i end end
     return 0
 end
-function CreateMacro(n, icon, body)
-    if #W.macroOrder >= W.macroCap then return nil end
+-- at the cap the stub raises, the harder of the two ways the client may refuse
+function CreateMacro(n, icon, body, perCharacter)
+    if #W.macroOrder >= W.macroCap then error("macro limit reached") end
     W.macroOrder[#W.macroOrder+1] = n
-    W.macros[n] = { icon = icon, body = body }
+    W.macros[n] = { icon = icon, body = body, perCharacter = perCharacter }
     return #W.macroOrder
 end
-function EditMacro(i, n, icon, body) W.macros[n] = { icon = icon, body = body } end
+function EditMacro(i, n, icon, body) W.macros[n].icon, W.macros[n].body = icon, body end
 function GetActionInfo(slot) local a = W.actions[slot]; if a then return a.kind, a.id end end
-function ShowMacroFrame() W.macroFrameShown = true end
+function PickupMacro(index) W.cursorMacro = index end
 
-function IsShiftKeyDown() return false end
 function print(...) W.chat[#W.chat+1] = table.concat({...}, " ") end
 tinsert = table.insert
 
@@ -229,13 +260,15 @@ function GameTooltip_Hide() GameTooltip:Hide() end
 MacroFrame = nil
 Menu = { ModifyMenu = function(tag, cb) W.menuHooks = W.menuHooks or {}; W.menuHooks[tag] = cb end }
 ADD = "Add"
+CLEAR_ALL = "Clear All"
 PRESS_TAB = "Press Tab"
+ICON_LIST = {}
+for i = 1, 8 do ICON_LIST[i] = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_" .. i .. ":" end
 -- the font objects behind LibNativeUI's roles; distinct tables so a test can tell the roles apart
 GameFontNormal = { name = "GameFontNormal" }
 GameFontHighlight = { name = "GameFontHighlight" }
 GameFontDisable = { name = "GameFontDisable" }
 GameFontNormalLarge = { name = "GameFontNormalLarge" }
-GameFontNormalHuge = { name = "GameFontNormalHuge" }
 -- MagicButton_OnLoad only adjusts anchors that exist when it runs, so record how many there were
 function MagicButton_OnLoad(b) b.magicAnchors = #b.points end
 -- ButtonFrameTemplate's attic and button bar helpers, which UI.CreateWindow calls only when a spec asks
@@ -290,9 +323,11 @@ end
 local libs = {
     ["LibDataBroker-1.1"] = { NewDataObject = function(_, _, o) return o end },
     ["LibDBIcon-1.0"] = {
-        IsRegistered = function() return false end,
+        IsRegistered = function() return W.ldbObject ~= nil end,
         Register = function(_, _, obj) W.ldbObject = obj end,
         AddButtonToCompartment = addToCompartment,
+        Show = function() W.minimapShown = true end,
+        Hide = function() W.minimapShown = false end,
     },
 }
 LibStub = setmetatable({
