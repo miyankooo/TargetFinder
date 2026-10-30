@@ -195,13 +195,14 @@ local function buildPanel()
         height = panelHeight(),
         position = TargetFinderDB.position,
     })
-    panel:SetScript("OnShow", function() ns.RefreshPanel() end)
-
-    -- Dropping FIND on a bar while the window is open switches the help line.
-    panel:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
-    panel:SetScript("OnEvent", function(self)
-        if self:IsShown() then updateHelp() end
+    -- Dropping FIND on a bar while the window is open switches the help line. Bar slots change in bursts on every
+    -- form and page swap, so the event is only watched while the window shows.
+    panel:SetScript("OnShow", function(self)
+        self:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
+        ns.RefreshPanel()
     end)
+    panel:SetScript("OnHide", function(self) self:UnregisterEvent("ACTIONBAR_SLOT_CHANGED") end)
+    panel:SetScript("OnEvent", updateHelp)
 
     buildFindIcon(panel)
     buildAtticHelp(panel)
