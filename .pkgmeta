@@ -2,7 +2,6 @@ package-as: TargetFinder
 manual-changelog: CHANGELOG.md
 
 ignore:
-  - CLAUDE.md
   - Tests
   - Tools
 
