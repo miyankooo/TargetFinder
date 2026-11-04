@@ -14,9 +14,11 @@ local function chatHas(pattern)
     for _, l in ipairs(W.chat) do if l:match(pattern) then return true end end
     return false
 end
-local function countMarks()
+local function targetCount()
     local n = 0
-    for _ in pairs(W.marks) do n = n + 1 end
+    for slot = 1, ns.MAX_TARGETS do
+        if ns.targets[slot] then n = n + 1 end
+    end
     return n
 end
 
@@ -76,7 +78,7 @@ check("friendly-only menus left alone", W.menuHooks["MENU_UNIT_RAID"] == nil and
 section("saved-variable sanitising")
 ns.AdoptSaved({ {name="Good", quest=true, kind=1}, {name=""}, {nope=true}, "junk", {name="Also", kind=2, quest="yes"},
     {name="Odd", quest=true, kind=9} })
-check("kept only well-formed entries", ns.TargetCount() == 3, ns.TargetCount())
+check("kept only well-formed entries", targetCount() == 3, targetCount())
 check("slot 1 preserved", ns.targets[1] and ns.targets[1].name == "Good")
 check("sparse slots preserved", ns.targets[2] == nil and ns.targets[5] ~= nil)
 check("quest source and kind kept", ns.targets[1].quest == true and ns.targets[1].kind == ns.KIND_KILL)
@@ -239,6 +241,17 @@ W.chat = {}
 labels["Untrack"](); RunTimers()
 check("Untrack removes the entry", ns.SlotForName("Auctioneer Chillgular") == nil)
 check("one chat line with the window closed", #W.chat == 1 and chatHas("Removed Auctioneer Chillgular%.$"), table.concat(W.chat, " / "))
+ns.WipeTargets()
+ns.targets[2] = ns.MakeEntry("Auctioneer Chillgular")
+root.items = {}
+W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon" })
+local staleUntrack = menuButtons()["Untrack"]
+-- a quest sync refills the rows while the menu is open
+ns.targets[2] = ns.MakeEntry("Kobold Laborer", true, ns.KIND_KILL)
+ns.targets[5] = ns.MakeEntry("Auctioneer Chillgular")
+staleUntrack(); RunTimers()
+check("Untrack removes the name, not the row it held when the menu opened",
+      ns.SlotForName("Auctioneer Chillgular") == nil and ns.SlotForName("Kobold Laborer") == 2)
 ns.targets[1] = ns.MakeEntry("Auctioneer")
 root.items = {}
 W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon" })
@@ -273,7 +286,7 @@ check("excuse names the loading state", ns.QuestieExcuse() == "Questie is still 
 W.chat = {}
 ns.WipeTargets()
 local loadingOk, loadingErr = pcall(ns.SetQuestNpcs, true)
-check("Quest NPCs waits quietly while Questie loads", loadingOk and ns.TargetCount() == 0 and #W.chat == 0, loadingErr)
+check("Quest NPCs waits quietly while Questie loads", loadingOk and targetCount() == 0 and #W.chat == 0, loadingErr)
 check("no suggestions while loading", #ns.FindSuggestions("kob") == 0)
 
 local login
@@ -425,7 +438,7 @@ ns.targets[3] = ns.MakeEntry("Typed Wolf")
 W.macroOrder = {}; W.macros = {}
 W.chat = {}
 zoneEvents.scripts.OnEvent(zoneEvents, "ZONE_CHANGED_NEW_AREA")
-check("the sync waits for the next frame", ns.TargetCount() == 1)
+check("the sync waits for the next frame", targetCount() == 1)
 RunTimers()
 check("kill target leads", ns.targets[1] and ns.targets[1].name == "Kobold Miner", ns.targets[1] and ns.targets[1].name)
 check("closest dropper follows", ns.targets[2] and ns.targets[2].name == "Kobold Looter", ns.targets[2] and ns.targets[2].name)
@@ -741,13 +754,13 @@ check("and lands after combat", W.macros["FIND"].body:match("/targetexact Auto")
 section("list operations")
 ns.WipeTargets()
 ns.AddFinder("First"); ns.AddFinder("Second"); ns.AddFinder("Third")
-check("three tracked", ns.TargetCount() == 3)
+check("three tracked", targetCount() == 3)
 check("the latest pick goes first", ns.targets[1].name == "Third" and ns.targets[2].name == "Second" and ns.targets[3].name == "First")
 W.chat = {}
 ns.AddFinder("Second")
-check("a duplicate is refused", ns.TargetCount() == 3 and chatHas("Second is already tracked%."), table.concat(W.chat, " / "))
+check("a duplicate is refused", targetCount() == 3 and chatHas("Second is already tracked%."), table.concat(W.chat, " / "))
 ns.RemoveFinder(2)
-check("removed leaves a hole", ns.targets[2] == nil and ns.TargetCount() == 2)
+check("removed leaves a hole", ns.targets[2] == nil and targetCount() == 2)
 
 section("quest entries sync without touching typed names")
 ns.WipeTargets()
@@ -769,7 +782,7 @@ check("an unchanged list leaves FIND alone", W.macros["FIND"].body == "sentinel"
 ns.WipeTargets()
 for i = 1, 8 do ns.targets[i] = ns.MakeEntry("Typed" .. i) end
 ns.SyncQuestEntries({ {name="Quest1"} })
-check("typed names are never pushed out", ns.SlotForName("Quest1") == nil and ns.TargetCount() == 8)
+check("typed names are never pushed out", ns.SlotForName("Quest1") == nil and targetCount() == 8)
 
 section("a full list makes room for a tracked name")
 panel.shown = false
@@ -779,11 +792,11 @@ ns.targets[7] = ns.MakeEntry("Quest7", true, ns.KIND_KILL)
 ns.targets[8] = ns.MakeEntry("Typed8")
 W.chat = {}
 ns.AddFinder("Ninth")
-check("the tracked name goes first", ns.targets[1].name == "Ninth" and ns.TargetCount() == 8)
+check("the tracked name goes first", ns.targets[1].name == "Ninth" and targetCount() == 8)
 check("the last quest entry made room", ns.SlotForName("Quest7") == nil and ns.SlotForName("Typed8") ~= nil)
 check("one line names what left", #W.chat == 1 and chatHas("Tracking Ninth%. The list was full, so Quest7 was removed%.$"), table.concat(W.chat, " / "))
 ns.AddFinder("Tenth")
-check("with only typed names the last one leaves", ns.targets[1].name == "Tenth" and ns.SlotForName("Typed8") == nil and ns.TargetCount() == 8)
+check("with only typed names the last one leaves", ns.targets[1].name == "Tenth" and ns.SlotForName("Typed8") == nil and targetCount() == 8)
 
 section("slash command")
 check("/tf and /targetfinder are registered", SLASH_TARGETFINDER1 == "/targetfinder" and SLASH_TARGETFINDER2 == "/tf")

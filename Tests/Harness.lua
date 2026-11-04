@@ -23,7 +23,6 @@ local function note(...) log[#log+1] = table.concat({...}, " ") end
 -- === world state the tests manipulate ===
 W = {
     units = {},            -- token -> {name=, player=bool, secret=bool, dead=bool, guid=}
-    marks = {},            -- token -> marker index
     macros = {},           -- name -> {icon=, body=}
     macroOrder = {},
     macroCap = 120,
@@ -31,7 +30,6 @@ W = {
     chat = {},
     errors = {},
     secretsOn = false,
-    markersSecret = false, -- GetRaidTargetIndex hands out a secret
     nilChecks = 0,         -- canaccessvalue calls that passed nil
     markCalls = 0,         -- SetRaidTarget calls
     readyCallbacks = {},   -- functions handed to Questie.API.RegisterOnReady
@@ -39,7 +37,6 @@ W = {
     group = nil,           -- nil solo, "party" or "raid"
     leader = false,        -- the player leads the group
     assistant = false,     -- the player is a raid assistant
-    restrictions = {},     -- Enum.AddOnRestrictionType value -> active
     created = {},          -- every frame CreateFrame returned, in order
     tooltip = {},          -- lines the GameTooltip_* helpers added
 }
@@ -183,27 +180,9 @@ function IsInGroup() return W.group ~= nil end
 function IsInRaid() return W.group == "raid" end
 function UnitIsGroupLeader() return W.leader == true end
 function UnitIsGroupAssistant() return W.assistant == true end
-C_RestrictedActions = { IsAddOnRestrictionActive = function(t) return W.restrictions[t] == true end }
-Enum = { AddOnRestrictionType = { Combat = 0, Encounter = 1, ChallengeMode = 2, PvPMatch = 3, Map = 4, Chat = 5 } }
 
-local SECRET = { __secret = true }
-function GetRaidTargetIndex(u)
-    if W.markersSecret then return SECRET end
-    return W.marks[u]
-end
--- a raid marker lives on one unit at a time, so setting it elsewhere moves it, and setting it again toggles it off
-function SetRaidTarget(u, m)
-    W.markCalls = W.markCalls + 1
-    if W.marks[u] == m then
-        W.marks[u] = nil
-        return
-    end
-    for other, marker in pairs(W.marks) do
-        if marker == m then W.marks[other] = nil end
-    end
-    W.marks[u] = m
-end
-function SetRaidTargetIconTexture(tex, idx) tex.markerCell = idx end
+-- only counted: the addon must never call it
+function SetRaidTarget() W.markCalls = W.markCalls + 1 end
 
 function InCombatLockdown() return W.inCombat == true end
 

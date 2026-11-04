@@ -23,8 +23,6 @@ local function appendMenu(_, root, context)
     local name = menuName(context)
     if not name then return end
 
-    local slot = ns.SlotForName(name)
-
     -- One flat row under a title, so no submenu hop is needed to reach it.
     root:CreateDivider()
     root:CreateTitle(ns.ADDON_NAME)
@@ -34,8 +32,9 @@ local function appendMenu(_, root, context)
         root:CreateButton(label, function() C_Timer.After(0, fn) end)
     end
 
-    if slot then
-        action("Untrack", function() ns.RemoveFinder(slot) end)
+    -- Untrack looks the row up at click time, because a quest sync may refill rows while the menu is open.
+    if ns.SlotForName(name) then
+        action("Untrack", function() ns.RemoveFinder(ns.SlotForName(name)) end)
     else
         action("Track", function() ns.AddFinder(name) end)
     end

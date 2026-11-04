@@ -15,14 +15,6 @@ function ns.MakeEntry(name, quest, kind)
     return { name = name, quest = fromQuest, kind = fromQuest and KINDS[kind] and kind or nil }
 end
 
-function ns.TargetCount()
-    local n = 0
-    for slot = 1, MAX_TARGETS do
-        if targets[slot] then n = n + 1 end
-    end
-    return n
-end
-
 function ns.FirstEmptySlot()
     for slot = 1, MAX_TARGETS do
         if not targets[slot] then return slot end
