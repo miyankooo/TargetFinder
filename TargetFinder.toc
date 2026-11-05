@@ -2,7 +2,7 @@
 ## Title: Target Finder
 ## Notes: One macro targets and marks the NPCs your quests need, plus any NPC you add.
 ## Author: miyanko
-## Version: 1.0.0
+## Version: @project-version@
 ## Category: Quests
 ## IconTexture: Interface\Icons\Ability_Hunter_SniperShot
 ## OptionalDeps: Questie
