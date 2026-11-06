@@ -73,7 +73,8 @@ check("minimap defaults created", TargetFinderDB.minimap.minimapPos == 215)
 check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
 check("Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
 check("unit menus registered", W.menuHooks["MENU_UNIT_TARGET"] ~= nil)
-check("friendly-only menus left alone", W.menuHooks["MENU_UNIT_RAID"] == nil and W.menuHooks["MENU_UNIT_FRIEND"] == nil)
+check("group, chat and friends menus left alone", W.menuHooks["MENU_UNIT_PARTY"] == nil and W.menuHooks["MENU_UNIT_RAID_PLAYER"] == nil
+      and W.menuHooks["MENU_UNIT_RAID"] == nil and W.menuHooks["MENU_UNIT_FRIEND"] == nil and W.menuHooks["MENU_UNIT_PLAYER"] == nil)
 
 section("saved-variable sanitising")
 ns.AdoptSaved({ {name="Good", quest=true, kind=1}, {name=""}, {nope=true}, "junk", {name="Also", kind=2, quest="yes"},
@@ -211,11 +212,28 @@ check("stored the NPC name", ns.targets[1] and ns.targets[1].name == "Mangeclaw"
 check("did NOT store 'Raid Target Icon'", ns.targets[1] and ns.targets[1].name ~= "Raid Target Icon")
 check("a player's Track creates FIND", W.macros["FIND"] ~= nil)
 check("tracking never calls SetRaidTarget", W.markCalls == 0, W.markCalls)
-check("one chat line with the bar reminder", #W.chat == 1 and chatHas("^.*Tracking Mangeclaw%. Drag FIND from the Target Finder window %(/tf%) to an action bar%.$"),
+check("one chat line with the bar reminder", #W.chat == 1 and chatHas("^.*Tracking Mangeclaw%. Drag FIND from your character macros %(/m%) to an action bar%.$"),
       table.concat(W.chat, " / "))
+check("Track opens the macro book", MacroFrame and MacroFrame.shown == true)
+check("on the character tab with FIND selected", MacroFrame and MacroFrame.tab == 2 and MacroFrame.selected == GetMacroIndexByName("FIND") - 120,
+      MacroFrame and (tostring(MacroFrame.tab) .. "/" .. tostring(MacroFrame.selected)))
 W.chat = {}
+MacroFrame.shown = false
+W.actions[7] = { kind = "macro", id = GetMacroIndexByName("FIND") }
 ns.AddFinder("Second Pick")
 check("the reminder comes once per session", #W.chat == 1 and not chatHas("Drag FIND"), table.concat(W.chat, " / "))
+check("the macro book stays shut once FIND is on a bar", MacroFrame.shown == false)
+W.actions = {}
+W.inCombat = true
+ns.AddFinder("Combat Pick")
+check("the macro book stays shut in combat", MacroFrame.shown == false)
+W.inCombat = false
+for f in pairs(_G.__frames) do
+    if f.events["PLAYER_REGEN_ENABLED"] then f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+end
+ns.WipeTargets()
+ns.SetSlot(1, "Typed In Window")
+check("typing in the window does not open the macro book", MacroFrame.shown == false)
 
 section("friendly players get no Target Finder entries")
 ns.WipeTargets()
@@ -223,6 +241,9 @@ root.items = {}
 W.units = { target = { name = "Someguy", player = true, friend = true } }
 W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Someguy" })
 check("no section for a friendly player", #root.items == 0, #root.items)
+W.units = { target = { name = "Buddy", player = true, friend = true, party = true } }
+W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Buddy" })
+check("no section for a group member", #root.items == 0, #root.items)
 W.units = { target = { name = "Rogue", player = true } }
 W.menuHooks["MENU_UNIT_ENEMY_PLAYER"](nil, root, { unit = "target", name = "Rogue" })
 check("an enemy player can be tracked", menuButtons()["Track"] ~= nil)
@@ -448,7 +469,14 @@ check("startedBy skipped once accepted", ns.SlotForName("Quest Giver") == nil)
 check("dropper in another zone skipped", ns.SlotForName("Kobold Far Away") == nil)
 check("quest entries carry their kind", ns.targets[1].kind == ns.KIND_KILL and ns.targets[2].kind == ns.KIND_DROP)
 check("the fill is silent", #W.chat == 0, table.concat(W.chat, " / "))
-check("an automatic change never creates FIND", W.macros["FIND"] == nil)
+check("a quest fill creates the missing FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body:match("/targetexact Kobold Miner") ~= nil,
+      W.macros["FIND"] and W.macros["FIND"].body)
+check("as a character macro", W.macros["FIND"] and W.macros["FIND"].perCharacter == true)
+W.macroOrder = {}; W.macros = {}
+zoneChange()
+check("saved quest rows get FIND on a sync that changes nothing", W.macros["FIND"] ~= nil)
+zoneChange()
+check("a later sync never creates a second FIND", #W.macroOrder == 1, #W.macroOrder)
 
 section("finished quest entries leave silently, and the rest hold still")
 ns.WriteFinderMacro()
@@ -523,7 +551,19 @@ check("quest NPC tagged with its quest", results[2] and results[2].isQuestNpc an
 local plain
 for _, r in ipairs(results) do if r.name == "Kobold Tunneler" then plain = r end end
 check("plain database NPCs follow", plain ~= nil and not plain.isQuestNpc)
+local tu = ns.FindSuggestions("tu")
+check("names that start with the query come before names that only contain it",
+      tu[1] and tu[1].name == "Turn In Guy" and tu[2] and tu[2].name == "Kobold Tunneler", tu[1] and tu[1].name)
 check("Questie icons resolve per kind", ns.QuestieKindIcons()[ns.KIND_KILL] == "slay" and ns.QuestieKindIcons()[ns.KIND_TURNIN] == "complete")
+
+section("a quest picked in the window creates FIND")
+ns.WipeTargets()
+W.macroOrder = {}; W.macros = {}
+ns.TrackQuest(100)
+RunTimers()
+check("the quest's NPCs fill the list", ns.SlotForName("Kobold Miner") ~= nil)
+check("the pick creates FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body:match("/targetexact Kobold Miner") ~= nil,
+      W.macros["FIND"] and W.macros["FIND"].body)
 
 section("panel is a native ButtonFrameTemplate window")
 local UI = LibStub("LibNativeUI-1.0")
@@ -577,7 +617,12 @@ check("the X clears its own row", ns.targets[1] == nil and ns.targets[2] ~= nil)
 check("no chat line while the window shows the change", #W.chat == 0, table.concat(W.chat, " / "))
 ns.WipeTargets()
 check("close button hides the panel itself, skipping HideUIPanel", panel.onCloseCallback() == false and panel.shown == false)
-panel.shown = true
+ns.targets[1] = ns.MakeEntry("While Closed")
+ns.RefreshPanel()
+check("a closed window skips the refresh", row1.input.text ~= "While Closed", row1.input.text)
+ns.TogglePanel()
+check("opening it shows the change", panel.shown == true and row1.input.text == "While Closed", row1.input.text)
+ns.WipeTargets()
 
 section("rows show where a quest NPC comes from")
 ns.targets[1] = ns.MakeEntry("Quest Mob", true, ns.KIND_KILL)
@@ -745,11 +790,28 @@ check("replayed after combat", W.macros["FIND"] ~= nil
 W.errors = {}
 W.inCombat = true
 ns.targets[2] = ns.MakeEntry("Auto")
-ns.WriteFinderMacro(true)
+ns.WriteFinderMacro(true, true)
 check("an automatic change in combat shows no notice", #W.errors == 0, #W.errors)
 W.inCombat = false
 regen.scripts.OnEvent(regen, "PLAYER_REGEN_ENABLED")
 check("and lands after combat", W.macros["FIND"].body:match("/targetexact Auto") ~= nil, W.macros["FIND"].body)
+W.inCombat = true
+ns.RemoveFinder(2)
+check("a removal in combat shows the notice", #W.errors == 1 and W.errors[1] == "Target Finder: FIND updates after combat.", W.errors[1])
+W.inCombat = false
+regen.scripts.OnEvent(regen, "PLAYER_REGEN_ENABLED")
+
+section("a removal creates FIND only while names remain")
+W.macroOrder = {}; W.macros = {}
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Keep"); ns.targets[2] = ns.MakeEntry("Drop")
+ns.RemoveFinder(2)
+check("a removal that leaves names creates FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body:match("/targetexact Keep") ~= nil)
+W.macroOrder = {}; W.macros = {}
+ns.RemoveFinder(1)
+check("removing the last name creates nothing", W.macros["FIND"] == nil)
+ns.SetSlot(3, "Typed")
+check("typing a name creates FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body:match("/targetexact Typed") ~= nil)
 
 section("list operations")
 ns.WipeTargets()
@@ -809,6 +871,23 @@ check("/tf minimap hides the minimap button", TargetFinderDB.minimap.hide == tru
 check("and says how to bring it back", chatHas("/tf minimap to show it again"), W.chat[1])
 SlashCmdList.TARGETFINDER("minimap")
 check("a second /tf minimap shows it", TargetFinderDB.minimap.hide == false and W.minimapShown == true)
+W.macroOrder = {}; W.macros = {}
+ns.WipeTargets()
+SlashCmdList.TARGETFINDER("add Hogger the Great")
+check("/tf add tracks the typed name first", ns.targets[1] and ns.targets[1].name == "Hogger the Great")
+check("/tf add creates FIND", W.macros["FIND"] ~= nil)
+W.units = { target = { name = "Mangeclaw" } }
+SlashCmdList.TARGETFINDER("ADD")
+check("/tf add without a name takes the target", ns.targets[1] and ns.targets[1].name == "Mangeclaw")
+W.units = {}
+W.chat = {}
+ns.WipeTargets()
+SlashCmdList.TARGETFINDER("add")
+check("/tf add with no name and no target explains", chatHas("Type a name or target a unit first%.$") and ns.targets[1] == nil,
+      table.concat(W.chat, " / "))
+local shownBefore = panel.shown
+SlashCmdList.TARGETFINDER("assist Buddy")
+check("/tf assist is gone and toggles the window", panel.shown ~= shownBefore and W.macros["ASSIST"] == nil and ns.SlotForName("Buddy") == nil)
 
 section("markers only ever go on through /tm")
 check("the addon never called SetRaidTarget", W.markCalls == 0, W.markCalls)

@@ -131,9 +131,18 @@ function CreateFrame(kind, name, parent, template)
     f.SetEnabled = function(self, v) self.enabled = v; return self end
     f.IsEnabled = function(self) return self.enabled end
     f.IsShown = function(self) return self.shown == true end
-    f.Show = function(self) self.shown = true; return self end
-    f.Hide = function(self) self.shown = false; return self end
-    f.SetShown = function(self, v) self.shown = v and true or false; return self end
+    -- like the client, OnShow and OnHide fire only when the shown state changes
+    local function setShown(self, v)
+        v = v and true or false
+        local changed = (self.shown == true) ~= v
+        self.shown = v
+        local script = changed and self.scripts[v and "OnShow" or "OnHide"]
+        if script then script(self) end
+        return self
+    end
+    f.Show = function(self) return setShown(self, true) end
+    f.Hide = function(self) return setShown(self, false) end
+    f.SetShown = setShown
     f.LockHighlight = function(self) self.locked = true; return self end
     f.UnlockHighlight = function(self) self.locked = false; return self end
     if kind == "Button" then
@@ -186,8 +195,11 @@ function SetRaidTarget() W.markCalls = W.markCalls + 1 end
 
 function InCombatLockdown() return W.inCombat == true end
 
+-- character macros sit after the 120 account slots, as in the client
 function GetMacroIndexByName(n)
-    for i, name in ipairs(W.macroOrder) do if name == n then return i end end
+    for i, name in ipairs(W.macroOrder) do
+        if name == n then return W.macros[n].perCharacter and 120 + i or i end
+    end
     return 0
 end
 -- at the cap the stub raises, the harder of the two ways the client may refuse
@@ -195,7 +207,15 @@ function CreateMacro(n, icon, body, perCharacter)
     if #W.macroOrder >= W.macroCap then error("macro limit reached") end
     W.macroOrder[#W.macroOrder+1] = n
     W.macros[n] = { icon = icon, body = body, perCharacter = perCharacter }
-    return #W.macroOrder
+    return GetMacroIndexByName(n)
+end
+-- the macro book, reduced to the tab and the selection the addon sets
+function ShowMacroFrame()
+    MacroFrame = MacroFrame or {
+        ChangeTab = function(self, tab) self.tab = tab end,
+        SelectMacro = function(self, index) self.selected = index end,
+    }
+    MacroFrame.shown = true
 end
 function EditMacro(i, n, icon, body) W.macros[n].icon, W.macros[n].body = icon, body end
 function GetActionInfo(slot) local a = W.actions[slot]; if a then return a.kind, a.id end end

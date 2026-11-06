@@ -222,7 +222,6 @@ local function buildNpcNameIndex(db)
     for i = 1, #list do
         npcNamesLower[i] = list[i]:lower()
     end
-    return true
 end
 
 local function questNpcs(questId)
@@ -351,12 +350,12 @@ local function nearbyQuestNpcs()
     return closestByPriority(entries)
 end
 
--- Quest names from the log first, then quest NPCs, then a prefix pass over the whole NPC index, then a substring pass. Prefix before substring puts the name /target can actually acquire at the top.
+-- Quest names from the log first, then quest NPCs, then NPC index names that start with the query, then names that contain it. Prefix before substring puts the name /target can actually acquire at the top.
 local function findSuggestions(query)
     local db = questieDB()
-    if not db or not buildNpcNameIndex(db) then return {} end
+    if not db then return {} end
+    buildNpcNameIndex(db)
     local q = query:lower()
-    local qLen = #q
     local results = {}
     local picked = {}
     local log = questLog()
@@ -387,23 +386,23 @@ local function findSuggestions(query)
         end
     end
 
+    -- One pass: prefix matches go straight in, substring matches wait in contained until the pass ends.
+    local contained = {}
     for i = 1, #npcNamesLower do
-        if npcNamesLower[i]:sub(1, qLen) == q and not picked[npcNames[i]] then
-            results[#results + 1] = { type = "npc", name = npcNames[i] }
-            picked[npcNames[i]] = true
-            if #results >= ns.MAX_SUGGESTIONS then return results end
+        local at = npcNamesLower[i]:find(q, 1, true)
+        if at and not picked[npcNames[i]] then
+            if at == 1 then
+                results[#results + 1] = { type = "npc", name = npcNames[i] }
+                if #results >= ns.MAX_SUGGESTIONS then return results end
+            elseif #contained < ns.MAX_SUGGESTIONS then
+                contained[#contained + 1] = npcNames[i]
+            end
         end
     end
-
-    for i = 1, #npcNamesLower do
-        local lname = npcNamesLower[i]
-        if lname:sub(1, qLen) ~= q and lname:find(q, 1, true) and not picked[npcNames[i]] then
-            results[#results + 1] = { type = "npc", name = npcNames[i] }
-            picked[npcNames[i]] = true
-            if #results >= ns.MAX_SUGGESTIONS then return results end
-        end
+    for _, name in ipairs(contained) do
+        if #results >= ns.MAX_SUGGESTIONS then break end
+        results[#results + 1] = { type = "npc", name = name }
     end
-
     return results
 end
 
@@ -513,7 +512,7 @@ function ns.TrackQuest(questId)
         ns.Announce("No NPCs found for that quest.")
         return
     end
-    ns.SyncQuestEntries(picks)
+    ns.SyncQuestEntries(picks, nil, true)
     if not ns.SlotForName(picks[1].name) then
         ns.Announce("The list is full. Remove a name first.")
         return

@@ -30,10 +30,19 @@ local function toggleMinimapButton()
     ns.Announce(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
 end
 
+-- /tf add takes a name, or the current target's when none is typed.
 local function onSlash(msg)
-    local arg = ns.Trim(msg)
-    if arg and arg:lower() == "minimap" then
+    local command, rest = (ns.Trim(msg) or ""):match("^(%S*)%s*(.-)$")
+    command = command:lower()
+    if command == "minimap" then
         toggleMinimapButton()
+    elseif command == "add" then
+        local name = ns.Trim(rest) or ns.ReadableName("target")
+        if name then
+            ns.AddFinder(name)
+        else
+            ns.Announce("Type a name or target a unit first.")
+        end
     else
         ns.TogglePanel()
     end

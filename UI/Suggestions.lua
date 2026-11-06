@@ -66,9 +66,7 @@ local function activate(input, entry)
         ns.TrackQuest(entry.questId)
         return
     end
-    local picked = entry.name
-    if not picked or picked == "" then return end
-    input:SetText(picked)
+    input:SetText(entry.name)
     hidePopup(input)
     ns.ApplyRowInput(input.slot)
 end
@@ -241,10 +239,8 @@ local function completeSelection(input)
     if not isOpenFor(input) then return end
     local entry = completionEntry()
     if not entry then return end
-    local picked = entry.name
-    if not picked or picked == "" then return end
-    input:SetText(picked)
-    input:SetCursorPosition(#picked)
+    input:SetText(entry.name)
+    input:SetCursorPosition(#entry.name)
     hidePopup(input)
 end
 
@@ -259,7 +255,7 @@ function ns.AttachAutocomplete(input, onChange)
         end
     end)
     input:SetScript("OnTextChanged", function(self, userInput)
-        if onChange then onChange() end
+        onChange()
         if not userInput then return end
         local typed = ns.Trim(self:GetText())
         if not typed or #typed < ns.MIN_QUERY_LENGTH then

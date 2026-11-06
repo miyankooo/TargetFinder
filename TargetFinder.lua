@@ -31,7 +31,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         ns.WatchQuestie()
 
         -- Rewrite on login so FIND matches the saved list even if it was edited by hand. Only an existing FIND is edited, because macros may not be loaded yet and a create here could leave two.
-        ns.WriteFinderMacro(true)
+        ns.WriteFinderMacro(true, true)
         self:UnregisterEvent("PLAYER_LOGIN")
     end
 end)

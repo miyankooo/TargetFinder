@@ -32,29 +32,19 @@ function ns.ApplyRowInput(slot)
     local input = row.input
     local typed = ns.Trim(input:GetText())
     local current = ns.targets[slot]
+    local existingSlot = ns.SlotForName(typed)
 
     if not typed then
         if current then ns.RemoveFinder(slot) end
-        input:ClearFocus()
-        ns.HideSuggestions(input)
-        return
+    elseif not existingSlot then
+        ns.SetSlot(slot, typed)
+    elseif existingSlot ~= slot then
+        ns.Announce(typed .. " is already tracked.")
+        input:SetText(current and current.name or "")
     end
-
-    local existingSlot = ns.SlotForName(typed)
-    if existingSlot then
-        if existingSlot ~= slot then
-            ns.Announce(typed .. " is already tracked.")
-            input:SetText(current and current.name or "")
-        end
-        input:ClearFocus()
-        ns.HideSuggestions(input)
-        row.updateState()
-        return
-    end
-
-    ns.SetSlot(slot, typed)
     input:ClearFocus()
     ns.HideSuggestions(input)
+    row.updateState()
 end
 
 -- The trailing column holds Add while the box differs from the stored name and the X while it shows it or is empty. The X always clears its own row.
@@ -216,8 +206,9 @@ local function buildPanel()
     return panel
 end
 
+-- A hidden window catches up in OnShow, so writes made while it is closed skip the row and action bar scan.
 function ns.RefreshPanel()
-    if not panel then return end
+    if not ns.PanelShown() then return end
     updateHelp()
 
     local ready = ns.QuestieReady()

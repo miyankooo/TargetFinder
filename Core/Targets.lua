@@ -40,6 +40,7 @@ function ns.AddFinder(name)
     local text = "Tracking " .. name .. "."
     if dropped then text = text .. " The list was full, so " .. dropped.name .. " was removed." end
     report(text, true)
+    ns.ShowFinder()
 end
 
 function ns.RemoveFinder(slot)
@@ -50,15 +51,8 @@ function ns.RemoveFinder(slot)
     report("Removed " .. removed.name .. ".")
 end
 
--- A name typed or picked into one row of the open window. It stays until the player removes it, even when a quest needs it, so moving on never takes away a name the player chose.
+-- A name typed or picked into one row of the open window. It stays until the player removes it, even when a quest needs it, so moving on never takes away a name the player chose. ns.ApplyRowInput has already rejected empty and tracked names.
 function ns.SetSlot(slot, name)
-    if not name or name == "" then return end
-    local existingSlot = ns.SlotForName(name)
-    if existingSlot == slot then return end
-    if existingSlot then
-        ns.Announce(name .. " is already tracked.")
-        return
-    end
     ns.targets[slot] = ns.MakeEntry(name)
     ns.WriteFinderMacro()
 end
@@ -72,8 +66,8 @@ local function listSignature()
     return table.concat(names, "\n")
 end
 
--- Quest entries follow the quest log without a chat line. With open, the names quests still need, only quest entries outside it leave; without it every quest entry makes way. wanted, best first, then fills the free slots. Typed names keep their slots.
-function ns.SyncQuestEntries(wanted, open)
+-- Quest entries follow the quest log without a chat line. With open, the names quests still need, only quest entries outside it leave; without it every quest entry makes way. wanted, best first, then fills the free slots. Typed names keep their slots. byPlayer marks a quest picked in the window, which shows the combat notice. A list that did not change still writes while FIND is missing, so saved quest rows get their FIND on the first sync.
+function ns.SyncQuestEntries(wanted, open, byPlayer)
     local before = listSignature()
     for slot = 1, MAX_TARGETS do
         local entry = ns.targets[slot]
@@ -83,5 +77,5 @@ function ns.SyncQuestEntries(wanted, open)
         local slot = not ns.SlotForName(item.name) and ns.FirstEmptySlot()
         if slot then ns.targets[slot] = ns.MakeEntry(item.name, true, item.kind) end
     end
-    if listSignature() ~= before then ns.WriteFinderMacro(true) end
+    if listSignature() ~= before or GetMacroIndexByName(ns.FIND_MACRO) == 0 then ns.WriteFinderMacro(false, not byPlayer) end
 end

@@ -3,6 +3,7 @@ local _, ns = ...
 local MAX_TARGETS = ns.MAX_TARGETS
 local MACRO_LIMIT = 255
 local CHARACTER_MACRO_CAP = Constants.MacroConsts.MAX_CHARACTER_MACROS
+local ACCOUNT_MACRO_CAP = Constants.MacroConsts.MAX_ACCOUNT_MACROS
 
 -- Bars 1-6 fill slots 1-72 and MultiBar5-7 add 145-180. An unused slot simply reads back nil.
 local ACTION_SLOT_COUNT = 180
@@ -11,6 +12,7 @@ local ACTION_SLOT_COUNT = 180
 local SKULL = 8
 
 -- Write the macro, then read the index back. CreateMacro returns the new index, but it has no generated documentation and may raise at the cap, so the protected call and the read-back settle success. FIND is a character macro, because the list and the action bars are per character.
+-- shortcut: GetMacroIndexByName finds an account macro of the same name first and edits it, upgrade to a character-range lookup if players report a shared FIND.
 local function setMacro(name, icon, body)
     local index = GetMacroIndexByName(name)
     if index and index > 0 then
@@ -88,10 +90,10 @@ local function queueMacro(name, icon, body, quiet)
     end
 end
 
--- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. editOnly marks a change the player did not make, such as a quest update or a group change. It only edits an existing FIND, so only the player's own action creates one and a write at login can never leave two.
-function ns.WriteFinderMacro(editOnly)
-    if not editOnly or GetMacroIndexByName(ns.FIND_MACRO) > 0 then
-        queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody(), editOnly)
+-- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. Like RestedXP's targeting macro, FIND is created when it is missing and the list holds a name, quest fills included. editOnly marks the login and group-change writes, which only edit an existing FIND, because at login the character's macros may not be loaded yet and a create could leave two. quiet marks the writes the player did not make, which show no combat notice.
+function ns.WriteFinderMacro(editOnly, quiet)
+    if GetMacroIndexByName(ns.FIND_MACRO) > 0 or (not editOnly and next(ns.targets) ~= nil) then
+        queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody(), quiet)
     end
     ns.RefreshPanel()
 end
@@ -102,7 +104,7 @@ events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PARTY_LEADER_CHANGED")
 events:SetScript("OnEvent", function(_, event)
     if event ~= "PLAYER_REGEN_ENABLED" then
-        if canMark() ~= marking then ns.WriteFinderMacro(true) end
+        if canMark() ~= marking then ns.WriteFinderMacro(true, true) end
         return
     end
     notifiedCombat = false
@@ -115,7 +117,7 @@ events:SetScript("OnEvent", function(_, event)
     ns.RefreshPanel()
 end)
 
--- Whether FIND sits on any action bar, which picks the window's help line and the one chat reminder.
+-- Whether FIND sits on any action bar, which picks the window's help line, the one chat reminder and whether the macro book opens.
 function ns.FinderOnBar()
     local absIndex = GetMacroIndexByName(ns.FIND_MACRO)
     if absIndex == 0 then return false end
@@ -126,19 +128,32 @@ function ns.FinderOnBar()
     return false
 end
 
--- The window's icon hands FIND to the cursor, so the player drops it on a bar without opening the macro book. The first drag creates FIND.
+-- The window's icon hands FIND to the cursor, so the player drops it on a bar straight from the window. The first drag creates FIND, even for an empty list.
 function ns.PickupFinder()
     if InCombatLockdown() then return end
-    ns.WriteFinderMacro()
+    queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody())
     local index = GetMacroIndexByName(ns.FIND_MACRO)
     if index > 0 then PickupMacro(index) end
 end
 
 local reminded = false
 
--- Once per session, while FIND sits on no bar, a chat line ends with where to get it. The open window's help line says the same.
+-- Once per session, while FIND sits on no bar, a chat line ends with where to get it.
 function ns.MacroHint()
     if reminded or ns.FinderOnBar() then return nil end
     reminded = true
-    return "Drag FIND from the Target Finder window (/tf) to an action bar."
+    return "Drag FIND from your character macros (/m) to an action bar."
+end
+
+-- After Track or /tf add, the macro book opens on FIND while it sits on no bar yet, so the player can drag it out. In combat the write is still queued, so there is nothing to show yet. SelectMacro takes an index within the tab, and character macros follow the account ones (Blizzard_MacroUI.lua:164-178).
+function ns.ShowFinder()
+    if InCombatLockdown() or ns.FinderOnBar() then return end
+    local index = GetMacroIndexByName(ns.FIND_MACRO)
+    if index == 0 then return end
+    ShowMacroFrame()
+    -- MacroFrame is only missing when Blizzard_MacroUI failed to load.
+    if not MacroFrame then return end
+    local character = index > ACCOUNT_MACRO_CAP
+    MacroFrame:ChangeTab(character and 2 or 1)
+    MacroFrame:SelectMacro(character and index - ACCOUNT_MACRO_CAP or index, true)
 end
