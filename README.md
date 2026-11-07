@@ -18,6 +18,6 @@ A WoW Forever addon that gives you one FIND button to target and skull-mark the 
 2. Add an NPC: type its name in a row, pick Track in its right-click menu, or type `/tf add` with it targeted.
 3. Drag the icon in the window's top-left corner to an action bar. That button is FIND.
 4. Press FIND to target the first NPC in range.
-5. Tick Quest NPCs to let your quests fill the free rows.
+5. Quest NPCs is ticked by default, so your quests fill the free rows. Untick it to keep only the names you add.
 
 FIND needs a free character macro slot. In a group, the skull needs leader or assistant rights.
