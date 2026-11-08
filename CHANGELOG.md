@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.0](https://github.com/miyankooo/TargetFinder/compare/v1.0.0...v1.1.0) (2026-11-08)
+
+
+### Features
+
+* Track and Untrack sit at the top of the right-click menu on NPC and player portraits
+* Drag a row's number to change the order of your targets
+* Apply Raid Markers: FIND now marks its target with a cross, the way RestedXP's targeting macro does, instead of a skull
+* Quest NPCs update when you accept, turn in or abandon a quest
+* Right-click the minimap button or type `/tf refresh` to update the quest NPCs where you stand
+* The first FIND macro opens the macro book on it with its icon glowing and a tip on where to drag it
+* A welcome line on first login, plus `/tf help` and `/tf intro`
+* The top of the window explains how to add names and names the next FIND step
+* Quest NPCs is now called Auto Apply Quest NPCs
+* The window shows the wardrobe's brown panel behind the rows, with room around the checkboxes
+* The remove button sits right next to its name
+
+
+### Bug Fixes
+
+* FIND builds its macro exactly like RestedXP's targeting macro
+
 ## 1.0.0 (2026-11-06)
 
 
