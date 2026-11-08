@@ -51,6 +51,17 @@ function ns.RemoveFinder(slot)
     report("Removed " .. removed.name .. ".")
 end
 
+-- A row dragged to another place in the window. The rows between move one step toward the gap it left, empty rows included, so the rest keep their order. A quest NPC stays a quest NPC, so the quest log can still swap it out.
+function ns.MoveTarget(from, to)
+    if from == to or not ns.targets[from] then return end
+    local list = {}
+    for slot = 1, MAX_TARGETS do list[slot] = ns.targets[slot] or false end
+    local entry = table.remove(list, from)
+    table.insert(list, to, entry)
+    for slot = 1, MAX_TARGETS do ns.targets[slot] = list[slot] or nil end
+    ns.WriteFinderMacro()
+end
+
 -- A name typed or picked into one row of the open window. It stays until the player removes it, even when a quest needs it, so moving on never takes away a name the player chose. ns.ApplyRowInput has already rejected empty and tracked names.
 function ns.SetSlot(slot, name)
     ns.targets[slot] = ns.MakeEntry(name)

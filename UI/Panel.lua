@@ -87,7 +87,7 @@ local function buildSlotInput(row, slot)
     return input
 end
 
--- Add fills a fixed trailing column and the X sits centred in it, so the input's right edge never moves. The remove button is Blizzard's close button without its scripts, because the stock close handler would hide the whole row.
+-- Add fills a fixed trailing column, so the input's right edge never moves. The X sits one tight step after the input instead of in that column, so it reads as part of the entry. The remove button is Blizzard's close button without its scripts, because the stock close handler would hide the whole row.
 local TRAILING_WIDTH = 48
 
 local function buildRowButtons(row, slot)
@@ -98,10 +98,83 @@ local function buildRowButtons(row, slot)
     row.addBtn = addBtn
 
     local removeBtn = UI.CreateRemoveButton(row)
-    removeBtn:SetPoint("CENTER", addBtn, "CENTER")
     removeBtn:SetScript("OnClick", function() ns.RemoveFinder(slot) end)
     removeBtn:Hide()
     row.removeBtn = removeBtn
+end
+
+-- Dragging a row's number moves its name to another row, the way Blizzard's lists reorder (ScrollUtil.lua:1552-1580, ConfigureDragBehavior): the dragged row fades to half, and Blizzard's drag line marks where it lands, above the row under the cursor when it moves up and below it when it moves down. The rows are no ScrollBox, so the same look is built from the same template.
+local DRAG_LINE_OFFSET = 3
+local dragFrom, dragTo, dragLine
+
+local function rowUnderCursor()
+    for slot, row in ipairs(panel.rows) do
+        if row:IsMouseOver() then return slot end
+    end
+    return nil
+end
+
+local function placeDragLine()
+    local over = rowUnderCursor()
+    if over then dragTo = over end
+    dragLine:ClearAllPoints()
+    if not dragTo or dragTo == dragFrom then
+        dragLine:Hide()
+        return
+    end
+    local row = panel.rows[dragTo]
+    if dragTo < dragFrom then
+        dragLine:SetPoint("BOTTOMLEFT", row, "TOPLEFT", 0, DRAG_LINE_OFFSET)
+        dragLine:SetPoint("BOTTOMRIGHT", row, "TOPRIGHT", 0, DRAG_LINE_OFFSET)
+    else
+        dragLine:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -DRAG_LINE_OFFSET)
+        dragLine:SetPoint("TOPRIGHT", row, "BOTTOMRIGHT", 0, -DRAG_LINE_OFFSET)
+    end
+    dragLine:Show()
+end
+
+local function startRowDrag(handle, slot)
+    if not ns.targets[slot] then return end
+    dragFrom, dragTo = slot, slot
+    dragLine = dragLine or CreateFrame("Frame", nil, panel.Inset, "ScrollBoxDragLineTemplate")
+    panel.rows[slot]:SetAlpha(0.5)
+    handle:SetScript("OnUpdate", placeDragLine)
+end
+
+local function stopRowDrag(handle)
+    if not dragFrom then return end
+    handle:SetScript("OnUpdate", nil)
+    panel.rows[dragFrom]:SetAlpha(1)
+    dragLine:Hide()
+    local from, to = dragFrom, dragTo
+    dragFrom, dragTo = nil, nil
+    if to and to ~= from then ns.MoveTarget(from, to) end
+end
+
+local function fillHandleTooltip(tooltip, slot)
+    GameTooltip_SetTitle(tooltip, "Row " .. slot)
+    GameTooltip_AddNormalLine(tooltip, "FIND targets row 1 first, then each row below it.")
+    GameTooltip_AddInstructionLine(tooltip, "Drag to move this name to another row.")
+end
+
+-- The row number is the handle, together with the quest icon beside it, so the grip has a visible mark on every row.
+local function buildRowHandle(row, slot)
+    local number = UI.CreateText(row, "heading")
+    number:SetSize(UI.Size.icon, UI.Size.row)
+    number:SetPoint("LEFT", row, "LEFT")
+    number:SetJustifyH("CENTER")
+    number:SetText(slot)
+    row.number = number
+
+    local handle = CreateFrame("Button", nil, row)
+    handle:SetPoint("TOPLEFT", row, "TOPLEFT")
+    handle:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT")
+    handle:SetWidth(UI.Size.icon + UI.Space.tight + UI.Size.icon)
+    handle:RegisterForDrag("LeftButton")
+    handle:SetScript("OnDragStart", function(self) startRowDrag(self, slot) end)
+    handle:SetScript("OnDragStop", stopRowDrag)
+    UI.AttachTooltip(handle, function(tooltip) fillHandleTooltip(tooltip, slot) end)
+    row.handle = handle
 end
 
 local function buildSlotRow(parent, slot)
@@ -111,10 +184,12 @@ local function buildSlotRow(parent, slot)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", UI.Space.padding, top)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -UI.Space.padding, top)
 
+    buildRowHandle(row, slot)
+
     -- Questie's own kill, loot or turn-in icon marks a row the quest log fills. A typed row leaves it empty.
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(UI.Size.icon, UI.Size.icon)
-    icon:SetPoint("LEFT", row, "LEFT")
+    icon:SetPoint("LEFT", row.number, "RIGHT", UI.Space.tight, 0)
     icon:Hide()
     row.icon = icon
 
@@ -124,6 +199,7 @@ local function buildSlotRow(parent, slot)
     -- InputBoxTemplate hangs only its left cap outside the box, so the box starts that far past one gap.
     row.input:SetPoint("LEFT", icon, "RIGHT", UI.Space.gap + UI.Native.inputArt, 0)
     row.input:SetPoint("RIGHT", row.addBtn, "LEFT", -UI.Space.gap, 0)
+    row.removeBtn:SetPoint("LEFT", row.input, "RIGHT", UI.Space.tight, 0)
     row.updateState = function() updateTrailing(row, slot) end
     ns.AttachAutocomplete(row.input, row.updateState)
 

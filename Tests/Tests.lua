@@ -692,7 +692,10 @@ local rowAnchor = row1.points[1]
 check("rows are padded on the grid", rowAnchor.x == UI.Space.padding and rowAnchor.y == -UI.Space.padding, rowAnchor.x)
 check("rows sit one gap apart", panel.rows[2].points[1].y == -(UI.Space.padding + UI.Size.row + UI.Space.gap), panel.rows[2].points[1].y)
 check("Add fills the fixed 48px column at the row height", row1.addBtn.width == 48 and row1.addBtn.height == UI.Size.row, row1.addBtn.width)
-check("the X sits centred in Add's column", row1.removeBtn.points[1].point == "CENTER" and row1.removeBtn.points[1].rel == row1.addBtn)
+check("the X sits one tight step after the input", row1.removeBtn.points[1].point == "LEFT" and row1.removeBtn.points[1].rel == row1.input
+      and row1.removeBtn.points[1].relPoint == "RIGHT" and row1.removeBtn.points[1].x == UI.Space.tight)
+check("each row shows its number in gold", row1.number.text == 1 and panel.rows[8].number.text == 8 and row1.number.fontObject == UI.Font.heading)
+check("the quest icon follows the number", row1.icon.points[1].rel == row1.number and row1.icon.points[1].x == UI.Space.tight)
 check("panel width is on the grid", panel.width and onGrid(panel.width), panel.width)
 check("inputs use the 12px body font", row1.input.fontObject == UI.Font.body, row1.input.fontObject and row1.input.fontObject.name)
 check("inputs use InputBoxTemplate", row1.input.template == "InputBoxTemplate", row1.input.template)
@@ -833,6 +836,58 @@ check("no pickup in combat", W.cursorMacro == nil)
 W.inCombat = false
 dragIcon.scripts.OnEnter(dragIcon)
 check("its tooltip names FIND", W.tooltip[1] == "title:FIND", W.tooltip[1])
+
+section("rows reorder by drag and drop")
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("First")
+ns.targets[2] = ns.MakeEntry("Second")
+ns.targets[4] = ns.MakeEntry("Fourth", true, ns.KIND_KILL)
+ns.RefreshPanel()
+local handle3 = panel.rows[3].handle
+check("each row has a drag handle over its number and icon", handle3 and handle3.width == UI.Size.icon + UI.Space.tight + UI.Size.icon)
+handle3.scripts.OnEnter(handle3)
+check("its tooltip says how to reorder", W.tooltip[1] == "title:Row 3" and W.tooltip[3] == "instruction:Drag to move this name to another row.",
+      table.concat(W.tooltip, " / "))
+handle3.scripts.OnDragStart(handle3)
+check("an empty row does not drag", handle3.scripts.OnUpdate == nil and panel.rows[3].alpha ~= 0.5)
+local handle1 = panel.rows[1].handle
+handle1.scripts.OnDragStart(handle1)
+check("the dragged row fades to half, as Blizzard's lists do", panel.rows[1].alpha == 0.5)
+local line
+for _, f in ipairs(W.created) do if f.template == "ScrollBoxDragLineTemplate" then line = f end end
+W.mouseOver = panel.rows[4]
+handle1.scripts.OnUpdate(handle1)
+check("Blizzard's drag line marks the drop below the row it moves down to", line and line.shown == true
+      and line.points[1].point == "TOPLEFT" and line.points[1].rel == panel.rows[4] and line.points[1].y == -3)
+W.mouseOver = nil
+handle1.scripts.OnUpdate(handle1)
+check("the gap between rows keeps the last target", line.shown == true and line.points[1].rel == panel.rows[4])
+W.mouseOver = panel.rows[4]
+handle1.scripts.OnDragStop(handle1)
+W.mouseOver = nil
+check("the drop moves the name and the rows between step up", ns.targets[1].name == "Second" and ns.targets[2] == nil
+      and ns.targets[3].name == "Fourth" and ns.targets[4].name == "First", (ns.targets[1] and ns.targets[1].name or "-"))
+check("the row is solid again and the line gone", panel.rows[1].alpha == 1 and line.shown == false)
+check("FIND follows the new order", W.macros["FIND"].body:match("/targetexact Second\n/targetlasttarget") ~= nil, W.macros["FIND"].body)
+check("a moved quest NPC stays a quest NPC", ns.targets[3].quest == true)
+local handle4 = panel.rows[4].handle
+handle4.scripts.OnDragStart(handle4)
+W.mouseOver = panel.rows[1]
+handle4.scripts.OnUpdate(handle4)
+check("moving up, the line sits above the target row", line.points[1].point == "BOTTOMLEFT" and line.points[1].rel == panel.rows[1]
+      and line.points[1].y == 3)
+handle4.scripts.OnDragStop(handle4)
+W.mouseOver = nil
+check("dropping on row 1 makes it first", ns.targets[1].name == "First" and ns.targets[2].name == "Second" and ns.targets[4].name == "Fourth")
+handle4 = panel.rows[2].handle
+handle4.scripts.OnDragStart(handle4)
+W.mouseOver = panel.rows[2]
+handle4.scripts.OnUpdate(handle4)
+check("over its own row, no line", line.shown == false)
+handle4.scripts.OnDragStop(handle4)
+W.mouseOver = nil
+check("and nothing moves", ns.targets[2].name == "Second")
+ns.WipeTargets()
 
 section("suggestion popup mirrors Blizzard's AutoCompleteBox")
 ns.WipeTargets()

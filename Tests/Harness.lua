@@ -87,6 +87,7 @@ function CreateFrame(kind, name, parent, template)
     f.ClearAllPoints = function(self) self.points = {}; return self end
     f.SetSize = function(self, w, h) self.width, self.height = w, h; return self end
     f.SetHeight = function(self, h) self.height = h; return self end
+    f.SetWidth = function(self, w) self.width = w; return self end
     f.SetFrameStrata = function(self, strata) self.strata = strata; return self end
     f.SetScript = function(self, ev, fn) self.scripts[ev] = fn; return self end
     f.HookScript = function(self, ev, fn)
@@ -105,6 +106,11 @@ function CreateFrame(kind, name, parent, template)
     f.CreateTexture = function(self)
         local t = newRegion("Texture")
         t.SetTexture = function(s, path) s.texturePath = path; return s end
+        t.points = {}
+        t.SetPoint = function(s, point, rel, relPoint, x, y)
+            s.points[#s.points+1] = { point = point, rel = rel, relPoint = relPoint, x = x, y = y }
+            return s
+        end
         t.SetAtlas = function(s, a) s.atlas = a; return s end
         t.Show = function(s) s.shown = true; return s end
         t.Hide = function(s) s.shown = false; return s end
@@ -139,6 +145,9 @@ function CreateFrame(kind, name, parent, template)
         f.GetText = function(self) return self.text or "" end
         f.HasFocus = function() return false end
     end
+    -- W.mouseOver names the one frame under the cursor
+    f.IsMouseOver = function(self) return W.mouseOver == self end
+    f.SetAlpha = function(self, a) self.alpha = a; return self end
     f.SetEnabled = function(self, v) self.enabled = v; return self end
     f.IsEnabled = function(self) return self.enabled end
     f.IsShown = function(self) return self.shown == true end

@@ -10,7 +10,7 @@ A WoW Forever addon that gives you one FIND button to target and raid-mark the N
 - Target Finder creates the FIND macro for you and keeps it up to date.
 - Track and Untrack sit at the top of the right-click menu on NPC and player portraits.
 - Apply Raid Markers gives each listed NPC you target the marker of its row: skull for row 1, cross for row 2, down to star for row 8.
-- Up to eight names, with row 1 first. Names you add are never replaced.
+- Up to eight names, with row 1 first. Drag a row's number to change the order. Names you add are never replaced.
 - With Questie, Auto Apply Quest NPCs fills free rows with the nearby NPCs you need to kill, loot or talk to. They update when you accept, turn in or abandon a quest and when you change zones.
 - With Questie, names are suggested as you type.
 
