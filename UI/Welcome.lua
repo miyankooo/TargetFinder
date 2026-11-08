@@ -15,10 +15,11 @@ function ns.PrintWelcome()
         .. " or type /tf to add your first name, or right-click a portrait and pick Track.")
 end
 
--- /tf intro: the welcome line now, and the macro book tip again the next time it opens on FIND.
+-- /tf intro: the welcome line now, and the macro book tip again, at once if the book shows FIND, else the next time it opens there.
 function ns.ReplayIntro()
     ns.db.tipSeen = nil
     ns.PrintWelcome()
+    ns.ShowFinderTip()
 end
 
 -- Another addon's link may come from a line kept from restricted content, so it is checked before the comparison.

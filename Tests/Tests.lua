@@ -1219,8 +1219,20 @@ ns.ShowFinder()
 check("an unseen tip comes back with the glow", tip.shown == true)
 tip:Acknowledge()
 check("its close button marks it seen", TargetFinderDB.tipSeen == true and tip.shown == false)
+SlashCmdList.TARGETFINDER("intro")
+check("/tf intro brings it back at once while the book shows FIND", tip.shown == true and TargetFinderDB.tipSeen == nil
+      and tip.info and tip.info.text ~= nil)
 HideMacroFrame()
 check("closing the macro book ends it", glow.shown == false and glow.events["ACTIONBAR_SLOT_CHANGED"] == nil)
+check("after intro, hiding with the macro book does not mark the tip seen", tip.shown == false and TargetFinderDB.tipSeen == nil,
+      tostring(TargetFinderDB.tipSeen))
+ns.ShowFinder()
+check("so it shows again at the next chance", tip.shown == true)
+W.actions[3] = { kind = "macro", id = GetMacroIndexByName("FIND") }
+glow.scripts.OnEvent(glow, "ACTIONBAR_SLOT_CHANGED")
+check("placing FIND while it shows retires it through its own close path", tip.shown == false and TargetFinderDB.tipSeen == true)
+W.actions = {}
+HideMacroFrame()
 W.macroOrder = {}; W.macros = {}
 MacroFrame.shown = false
 ns.SyncQuestEntries({ { name = "Quest Boar", kind = ns.KIND_KILL } })

@@ -17,7 +17,7 @@ local function CreateProcGlow(button)
     return glow
 end
 
--- The help tip is an own HelpTipTemplate frame, never HelpTip:Show, which takes a frame from Blizzard's shared pool and taints the help tips Blizzard shows later. Closing it or placing FIND marks it seen for the account, and /tf intro clears that.
+-- The help tip is an own HelpTipTemplate frame, never HelpTip:Show, which takes a frame from Blizzard's shared pool and taints the help tips Blizzard shows later. Closing it or placing FIND marks it seen for the account, and /tf intro clears that. Unlike the recipe's AttachTip it does not follow its target's OnShow: the large icon shows every selected macro, so update() below shows the tip only while it shows FIND.
 local TIP_TEXT = "Drag FIND to an action bar to target the names on your Target Finder list."
 
 local glow, tip
@@ -30,6 +30,7 @@ local info = {
     onAcknowledgeCallback = function() ns.db.tipSeen = true end,
 }
 
+-- Reset comes before every Init: only Blizzard's pool resets a tip, and Init leaves acknowledged set (Blizzard_SharedXML/HelpTip.lua:419-431, 495, 687), so a tip closed once and brought back by /tf intro would count as seen when it merely hides with the macro book. Close hands a hidden tip to HelpTip:Release, which ignores a frame its pool does not own (HelpTip.lua:343-346).
 local function showTip(target)
     if ns.db.tipSeen or (tip and tip:IsShown()) then return end
     if not tip then
@@ -37,8 +38,14 @@ local function showTip(target)
         tip.width = HelpTip.width
         tip:SetWidth(tip.width)
     end
+    tip:Reset()
     tip:Init(target, info, target)
     tip:Show()
+end
+
+-- The player used the feature: the tip goes for good, shown or not.
+local function retireTip()
+    if tip and tip.info then tip:Acknowledge() else ns.db.tipSeen = true end
 end
 
 -- A hide without the close button leaves the tip unseen, so it comes back at the next chance.
@@ -72,7 +79,7 @@ local function build()
     -- FIND on a bar is what the tip asks for, so it counts as seen and the callout ends for good. Closing the macro book only ends it until the next time it opens on FIND.
     glow:SetScript("OnEvent", function()
         if not ns.FinderOnBar() then return end
-        ns.db.tipSeen = true
+        retireTip()
         stop()
     end)
     MacroFrame:HookScript("OnHide", stop)
@@ -88,4 +95,9 @@ function ns.GlowFinder()
     active = true
     glow:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
     update()
+end
+
+-- /tf intro: with the macro book already open on FIND the tip comes back now, otherwise the next time it opens there.
+function ns.ShowFinderTip()
+    if active then update() end
 end

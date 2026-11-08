@@ -187,15 +187,24 @@ function CreateFrame(kind, name, parent, template)
             f[corner].shown = true
         end
     end
-    -- the help tip template: Init stores what it was given, the close button runs the acknowledge callback
+    -- the help tip template as HelpTip.lua builds it: Init stores what it was given and, like the client, leaves
+    -- acknowledged alone; only Reset clears it. The close button acknowledges, and every hide runs Close, which
+    -- calls back when the tip was acknowledged.
     if template == "HelpTipTemplate" then
+        f.acknowledged = false
         f.Init = function(self, parent, info, relative) self.info, self.target = info, relative; return self end
-        f.Acknowledge = function(self)
+        f.Reset = function(self) self.info, self.acknowledged = nil, false; return self end
+        f.Close = function(self)
             local info = self.info
             self.info = nil
-            self:Hide()
-            if info and info.onAcknowledgeCallback then info.onAcknowledgeCallback() end
+            if info and self.acknowledged and info.onAcknowledgeCallback then info.onAcknowledgeCallback() end
+            if self:IsShown() then self:Hide() end
         end
+        f.Acknowledge = function(self)
+            self.acknowledged = true
+            self:Close()
+        end
+        f.scripts.OnHide = function(self) self:Close() end
     end
     -- Blizzard's proc glow carries its start animation
     if template == "ActionButtonSpellAlertTemplate" then
