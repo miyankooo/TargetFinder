@@ -733,17 +733,23 @@ check("a button sits on the portrait", dragIcon ~= nil)
 check("it drags with the left button", dragIcon and dragIcon.scripts.OnDragStart ~= nil)
 W.macroOrder = {}; W.macros = {}; W.cursorMacro = nil; W.actions = {}
 ns.RefreshPanel()
-check("without FIND, help says adding a name creates it", panel.help.text == "Add an NPC below to create your FIND macro.", panel.help.text)
+check("the gold help line says how to fill the list", panel.help.text == "Type NPC names below or right-click an NPC to Track."
+      and panel.help.fontObject == UI.Font.heading, panel.help.text)
+check("the white step line sits one band below it", panel.nextStep.fontObject == UI.Font.body
+      and panel.help.points[1].y - panel.nextStep.points[1].y == 2 * UI.Space.gap)
+check("both lines are cut, never wrapped, beside the portrait", panel.help.points[1].x == UI.Native.titleLeft
+      and panel.nextStep.points[1].x == UI.Native.titleLeft and panel.help.wordWrap == false and panel.nextStep.wordWrap == false)
+check("without FIND, the step says the first name creates it", panel.nextStep.text == "The first name creates your FIND macro.", panel.nextStep.text)
 TargetFinderCharDB.finderIntroduced = nil
 dragIcon.scripts.OnDragStart(dragIcon)
 check("the first drag creates FIND", W.macros["FIND"] ~= nil)
 check("a FIND created by dragging needs no introduction", TargetFinderCharDB.finderIntroduced == true and (W.timers == nil or #W.timers == 0))
 ns.RefreshPanel()
-check("once FIND exists, help says to place it", panel.help.text == "Your FIND macro is ready. Drag the icon to a bar.", panel.help.text)
+check("once FIND exists, the step says to place it", panel.nextStep.text == "Drag the icon to an action bar to place FIND.", panel.nextStep.text)
 check("and puts it on the cursor", W.cursorMacro ~= nil and W.cursorMacro == GetMacroIndexByName("FIND"), W.cursorMacro)
 W.actions[5] = { kind = "macro", id = GetMacroIndexByName("FIND") }
 panel.scripts.OnEvent(panel, "ACTIONBAR_SLOT_CHANGED")
-check("on a bar, help says to press it", panel.help.text == "Press FIND to target the first NPC in range.", panel.help.text)
+check("on a bar, the step says to press it", panel.nextStep.text == "Press FIND to target the first listed NPC in range.", panel.nextStep.text)
 W.actions = {}
 W.inCombat = true
 W.cursorMacro = nil

@@ -6,16 +6,17 @@ local MAX_TARGETS = ns.MAX_TARGETS
 -- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), which UI.CreateWindow builds. The dialog kit is for small popups, which eight editable rows are not.
 local PANEL_NAME = "TargetFinderFrame"
 
--- Wide enough that the one-line attic help fits beside the portrait.
+-- Wide enough that each line of the attic help fits beside the portrait.
 local PANEL_WIDTH = 400
 
 -- Editable rows sit one gap apart, so the 20px edit boxes never touch.
 local ROW_PITCH = UI.Size.row + UI.Space.gap
 
--- The attic names the next step: add a name so Target Finder creates FIND, place it, then press it.
-local HELP_ADD = "Add an NPC below to create your FIND macro."
-local HELP_PLACE = "Your FIND macro is ready. Drag the icon to a bar."
-local HELP_PRESS = "Press FIND to target the first NPC in range."
+-- The attic's first line says how to fill the list. The second names the next FIND step: the first name creates it, then the player places it, then presses it.
+local HELP_ADD = "Type NPC names below or right-click an NPC to Track."
+local STEP_CREATE = "The first name creates your FIND macro."
+local STEP_PLACE = "Drag the icon to an action bar to place FIND."
+local STEP_PRESS = "Press FIND to target the first listed NPC in range."
 
 local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
 
@@ -143,14 +144,20 @@ local function buildFindIcon(frame)
     UI.AttachTooltip(button, fillFindTooltip)
 end
 
--- One line of help in the attic, the band between the title bar and the Inset, level with the title and centred on the band's height. Its right edge lines up with the rows below.
+-- Two lines of help in the attic, the band between the title bar and the Inset, level with the title and one gap either side of the band's middle: a gold line on how to fill the list over a white line with the next FIND step, as Blizzard sets gold over white. Their right edge lines up with the rows below, and a line that does not fit is cut, never wrapped.
+local function buildHelpLine(frame, role, y)
+    local line = UI.CreateText(frame, role)
+    line:SetPoint("LEFT", frame, "TOPLEFT", UI.Native.titleLeft, y)
+    line:SetPoint("RIGHT", frame, "TOPRIGHT", PANEL_INSET_RIGHT_OFFSET - UI.Space.padding, y)
+    line:SetWordWrap(false)
+    return line
+end
+
 local function buildAtticHelp(frame)
     local atticMiddle = (PANEL_INSET_TOP_OFFSET + PANEL_INSET_ATTIC_OFFSET) / 2
-    local helper = UI.CreateText(frame, "body")
-    helper:SetPoint("LEFT", frame, "TOPLEFT", UI.Native.titleLeft, atticMiddle)
-    helper:SetPoint("RIGHT", frame, "TOPRIGHT", PANEL_INSET_RIGHT_OFFSET - UI.Space.padding, atticMiddle)
-    helper:SetWordWrap(false)
-    frame.help = helper
+    frame.help = buildHelpLine(frame, "heading", atticMiddle + UI.Space.gap)
+    frame.help:SetText(HELP_ADD)
+    frame.nextStep = buildHelpLine(frame, "body", atticMiddle - UI.Space.gap)
 end
 
 -- Blizzard's tooltip helpers carry the standard tooltip colours; the error line says why the box is off.
@@ -204,13 +211,13 @@ local function panelHeight()
 end
 
 local function updateHelp()
-    local text = HELP_ADD
+    local text = STEP_CREATE
     if ns.FinderOnBar() then
-        text = HELP_PRESS
+        text = STEP_PRESS
     elseif ns.FinderExists() then
-        text = HELP_PLACE
+        text = STEP_PLACE
     end
-    panel.help:SetText(text)
+    panel.nextStep:SetText(text)
 end
 
 local function buildPanel()
@@ -224,7 +231,7 @@ local function buildPanel()
     })
     -- Blizzard's own setter for the bar under the Inset (Mainline/SharedUIPanelTemplates.lua:57). The brown panel is anchored to the Inset, so it follows.
     FrameTemplate_SetButtonBarHeight(panel, BAR_HEIGHT)
-    -- Dropping FIND on a bar while the window is open switches the help line. Bar slots change in bursts on every
+    -- Dropping FIND on a bar while the window is open switches the step line. Bar slots change in bursts on every
     -- form and page swap, so the event is only watched while the window shows.
     panel:SetScript("OnShow", function(self)
         self:RegisterEvent("ACTIONBAR_SLOT_CHANGED")

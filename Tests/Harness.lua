@@ -123,6 +123,12 @@ function CreateFrame(kind, name, parent, template)
         local fs = newRegion("FontString")
         fs.SetText = function(s, v) s.text = v; return s end
         fs.SetFontObject = function(s, font) s.fontObject = font; return s end
+        fs.points = {}
+        fs.SetPoint = function(s, point, rel, relPoint, x, y)
+            s.points[#s.points+1] = { point = point, rel = rel, relPoint = relPoint, x = x, y = y }
+            return s
+        end
+        fs.SetWordWrap = function(s, v) s.wordWrap = v; return s end
         fs.GetStringWidth = function() return 10 end
         fs.GetStringHeight = function() return 10 end
         return fs
