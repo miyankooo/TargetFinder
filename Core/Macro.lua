@@ -23,27 +23,62 @@ local function setMacro(name, icon, body)
     return ok, ok and not existed
 end
 
--- RestedXP's targeting macro (RXPGuides Targeting.lua, UpdateMacro): one /targetexact per slot in REVERSE, so slot 1 is the last line and wins, then /targetlasttarget [dead] steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. Markers are not in the macro: /tm has no condition on a name, so a per-row marker cannot be written there (Core/Markers.lua sets them). On overflow at the 255-character cap the lowest-priority lines drop off the top.
-local function buildFindBody()
-    local ordered = {}
-    for slot = 1, MAX_TARGETS do
-        if ns.targets[slot] then ordered[#ordered + 1] = ns.targets[slot] end
-    end
+-- RestedXP's targeting macro (RXPGuides Targeting.lua, UpdateMacro): one /targetexact per slot in REVERSE, so slot 1 is the last line and wins, then /targetlasttarget [dead] steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. On overflow at the 255-character cap the lowest-priority lines drop off the top.
+local PLAIN_TAIL = "\n/targetlasttarget [dead]"
 
-    -- A comment-only body, so pressing FIND with an empty list leaves the current target alone instead of clearing it.
-    if #ordered == 0 then return "// " .. ns.ADDON_NAME .. " - no targets" end
-
-    local tail = "\n/targetlasttarget [dead]"
+local function plainBody(ordered)
     local lines = {}
     for i = #ordered, 1, -1 do
         lines[#lines + 1] = "/targetexact " .. ordered[i].name
     end
-    local body = table.concat(lines, "\n") .. tail
+    local body = table.concat(lines, "\n") .. PLAIN_TAIL
     while #body > MACRO_LIMIT and #lines > 1 do
         table.remove(lines, 1)
-        body = table.concat(lines, "\n") .. tail
+        body = table.concat(lines, "\n") .. PLAIN_TAIL
     end
     return body
+end
+
+-- Apply Raid Markers, written into FIND because addons may not call SetRaidTarget on Forever (ADDON_ACTION_FORBIDDEN, seen in game 2026-11-08); /tm is Blizzard's secure path. Each marked row's /targetexact is followed by /tm with the "~" prefix, which leaves a unit that already carries any marker (SlashCommands.lua:1465-1470). A found unit is marked at once, so the lines after it, which find nothing and keep it targeted, cannot mark it again. Every listed unit FIND passes gets its row's marker, and the last match stays targeted.
+-- The /cleartarget in front stops those lines from marking the player's own target or an unmarked row's match. /targetlasttarget [noexists] brings that target back when no marked row matches, and [dead] steps back from a corpse as before.
+-- Rows that do not fit the cap stay unmarked: they go first, before /cleartarget, so a marked row still wins. Marking drops from the lowest rows until the body fits, and with no room at all FIND is the plain macro.
+local MARKED_TAIL = "\n/targetlasttarget [noexists][dead]"
+
+local function markedBody(ordered, marked)
+    local lines = {}
+    for i = #ordered, marked + 1, -1 do
+        lines[#lines + 1] = "/targetexact " .. ordered[i].name
+    end
+    lines[#lines + 1] = "/cleartarget"
+    for i = marked, 1, -1 do
+        lines[#lines + 1] = "/targetexact " .. ordered[i].name
+        lines[#lines + 1] = "/tm [harm,nodead] ~" .. ns.SLOT_MARKERS[ordered[i].slot]
+    end
+    return table.concat(lines, "\n") .. MARKED_TAIL
+end
+
+-- Whether the last body carries marker lines, so a group change rewrites FIND only when that flips.
+local marking
+
+local function buildFindBody()
+    local ordered = {}
+    for slot = 1, MAX_TARGETS do
+        local entry = ns.targets[slot]
+        if entry then ordered[#ordered + 1] = { name = entry.name, slot = slot } end
+    end
+
+    marking = TargetFinderCharDB.raidMarkers == true and ns.CanMark()
+
+    -- A comment-only body, so pressing FIND with an empty list leaves the current target alone instead of clearing it.
+    if #ordered == 0 then return "// " .. ns.ADDON_NAME .. " - no targets" end
+
+    if marking then
+        for marked = #ordered, 1, -1 do
+            local body = markedBody(ordered, marked)
+            if #body <= MACRO_LIMIT then return body end
+        end
+    end
+    return plainBody(ordered)
 end
 
 -- EditMacro and CreateMacro are blocked in combat, so a write made then is stashed and replayed on PLAYER_REGEN_ENABLED. The on-screen red notice fires once per combat session and only for the player's own changes, since quest updates land in nearly every fight.
@@ -87,7 +122,7 @@ local function queueMacro(name, icon, body, quiet)
     writeMacro(name, icon, body)
 end
 
--- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. Like RestedXP's targeting macro, FIND is created when it is missing and the list holds a name, quest fills included. editOnly marks the login write, which only edits an existing FIND, because at login the character's macros may not be loaded yet and a create could leave two. quiet marks the writes the player did not make, which show no combat notice.
+-- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. Like RestedXP's targeting macro, FIND is created when it is missing and the list holds a name, quest fills included. editOnly marks the login and group-change writes, which only edit an existing FIND, because at login the character's macros may not be loaded yet and a create could leave two. quiet marks the writes the player did not make, which show no combat notice.
 function ns.WriteFinderMacro(editOnly, quiet)
     if GetMacroIndexByName(ns.FIND_MACRO) > 0 or (not editOnly and next(ns.targets) ~= nil) then
         queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody(), quiet)
@@ -95,9 +130,20 @@ function ns.WriteFinderMacro(editOnly, quiet)
     ns.RefreshPanel()
 end
 
+-- Marker lines follow the group role, so a roster or leader change rewrites FIND when the player gains or loses the right to mark.
+function ns.MarkingChanged()
+    return (TargetFinderCharDB.raidMarkers == true and ns.CanMark()) ~= marking
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
-events:SetScript("OnEvent", function()
+events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("PARTY_LEADER_CHANGED")
+events:SetScript("OnEvent", function(_, event)
+    if event ~= "PLAYER_REGEN_ENABLED" then
+        if ns.MarkingChanged() then ns.WriteFinderMacro(true, true) end
+        return
+    end
     notifiedCombat = false
     if next(pendingMacros) == nil then return end
     local queued = pendingMacros

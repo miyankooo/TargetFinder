@@ -25,7 +25,8 @@ local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your
 local QUEST_REFRESH = "Right-click the minimap button or type /tf refresh to update them now, also with this box off."
 
 local MARKER_LABEL = "Apply Raid Markers"
-local MARKER_HELP = "When you target an NPC from the list, it gets the raid marker of its row."
+local MARKER_HELP = "When you press FIND, each listed NPC it finds gets the raid marker of its row. An NPC that already has a marker keeps it."
+local MARKER_ROOM = "Rows that do not fit in the 255-character macro stay unmarked, from row 8 up."
 local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
 
 -- The template's 26px button bar fits a 22px button, which leaves a 24px checkbox no room. The bar grows to one gap above and below the checkboxes, measured from the frame's bottom border, MagicButton_OnLoad's 4px inset (Mainline/SharedUIPanelTemplates.lua:34). The checkboxes start at the rows' left edge.
@@ -266,6 +267,7 @@ local function fillMarkerTooltip(tooltip)
     for slot, marker in ipairs(ns.SLOT_MARKERS) do
         GameTooltip_AddHighlightLine(tooltip, "Row " .. slot .. ": " .. _G["RAID_TARGET_" .. marker])
     end
+    GameTooltip_AddNormalLine(tooltip, MARKER_ROOM)
     if ns.CanMark() then
         GameTooltip_AddNormalLine(tooltip, MARKER_RIGHTS)
     else
@@ -277,7 +279,7 @@ end
 local function buildMarkerBox(frame)
     local box = UI.CreateCheckbox(frame, MARKER_LABEL)
     box:SetPoint("LEFT", frame.questBox.Text, "RIGHT", UI.Space.padding, 0)
-    box:SetScript("OnClick", function(self) TargetFinderCharDB.raidMarkers = self:GetChecked() end)
+    box:SetScript("OnClick", function(self) ns.SetRaidMarkers(self:GetChecked()) end)
     UI.AttachTooltip(box, fillMarkerTooltip)
     frame.markerBox = box
 end

@@ -75,6 +75,8 @@ check("minimap defaults created", TargetFinderDB.minimap.minimapPos == 215)
 check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
 check("Auto Apply Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
 check("Apply Raid Markers starts on", TargetFinderCharDB.raidMarkers == true)
+-- the plain FIND body is the subject until the marker section turns this back on
+TargetFinderCharDB.raidMarkers = false
 check("unit menus registered", W.menuHooks["MENU_UNIT_TARGET"] ~= nil)
 local targetFrameMenus = true
 for _, tag in ipairs({ "MENU_UNIT_TARGET", "MENU_UNIT_PLAYER", "MENU_UNIT_ENEMY_PLAYER", "MENU_UNIT_PARTY", "MENU_UNIT_RAID_PLAYER",
@@ -133,68 +135,77 @@ ns.WriteFinderMacro()
 check("cap failure announced", chatHas("Delete one in the macro book"), table.concat(W.chat, " / "))
 W.macroCap = 120
 
-section("Apply Raid Markers marks each row with its own marker")
-local markerEvents
-for f in pairs(_G.__frames) do if f.events["PLAYER_TARGET_CHANGED"] then markerEvents = f end end
-check("target changes are watched", markerEvents ~= nil)
-local function retarget(unit)
-    W.units = { target = unit }
-    W.markers = {}
-    W.lastMark = nil
-    markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
-    return W.lastMark and W.lastMark.index
-end
-ns.WipeTargets()
-for i = 1, 8 do ns.targets[i] = ns.MakeEntry("Mob" .. i) end
-local expected = { 8, 7, 6, 5, 4, 3, 2, 1 }
-local allRight = true
-for i = 1, 8 do
-    if retarget({ name = "Mob" .. i, hostile = true }) ~= expected[i] then allRight = false end
-end
-check("row 1 skull, row 2 cross, down to row 8 star", allRight)
-check("it marks the target", W.lastMark.unit == "target")
-check("an unlisted NPC gets nothing", retarget({ name = "Stranger", hostile = true }) == nil)
-check("a friendly NPC gets nothing, like [harm]", retarget({ name = "Mob1" }) == nil)
-check("a corpse gets nothing, like [nodead]", retarget({ name = "Mob1", hostile = true, dead = true }) == nil)
-check("a player of a listed name gets nothing", retarget({ name = "Mob1", hostile = true, player = true }) == nil)
-check("a hidden name gets nothing", retarget({ name = "Mob1", hostile = true, secret = true }) == nil)
-W.units = { target = { name = "Mob2", hostile = true } }
-W.markers = { target = 7 }
-W.lastMark = nil
-markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
-check("a marker already in place stays, so it never toggles off", W.lastMark == nil)
-W.markers = { target = 3 }
-markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
-check("another marker is replaced by the row's", W.lastMark and W.lastMark.index == 7)
-W.markerSecret, W.secretsOn = true, true
-check("an unreadable current marker skips the mark", retarget({ name = "Mob1", hostile = true }) == nil)
-W.markerSecret, W.secretsOn = false, false
-W.restricted[0] = true
-check("an active addon restriction skips the mark", retarget({ name = "Mob1", hostile = true }) == nil)
-W.restricted = {}
-W.restricted[5] = true
-check("any restriction type skips it", retarget({ name = "Mob1", hostile = true }) == nil)
-W.restricted = {}
-W.group = "party"
-check("a party member who does not lead marks nothing", retarget({ name = "Mob1", hostile = true }) == nil)
-W.leader = true
-check("the party leader marks", retarget({ name = "Mob1", hostile = true }) == 8)
-W.group, W.leader = "raid", false
-check("a plain raid member marks nothing", retarget({ name = "Mob1", hostile = true }) == nil)
-W.assistant = true
-check("a raid assistant marks", retarget({ name = "Mob1", hostile = true }) == 8)
-W.units = { player = { name = "Me", secret = true }, target = { name = "Mob1", hostile = true } }
-W.group, W.assistant, W.leader = "party", false, true
-W.lastMark = nil
-markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
-check("a hidden leader answer counts as no", W.lastMark == nil)
-W.group, W.leader = nil, false
-TargetFinderCharDB.raidMarkers = false
-check("unticked, nothing is marked", retarget({ name = "Mob1", hostile = true }) == nil)
+section("Apply Raid Markers writes /tm lines into FIND")
 TargetFinderCharDB.raidMarkers = true
-check("solo, it marks", retarget({ name = "Mob1", hostile = true }) == 8)
 W.units = {}
-W.markCalls = 0
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta"); ns.targets[4] = ns.MakeEntry("Delta")
+ns.WriteFinderMacro()
+local MARKED_TAIL = "\n/targetlasttarget [noexists][dead]"
+check("each row's /targetexact is followed by its own marker, lowest row first",
+      W.macros["FIND"].body == "/cleartarget\n/targetexact Delta\n/tm [harm,nodead] ~5\n/targetexact Beta\n/tm [harm,nodead] ~7"
+      .. "\n/targetexact Alpha\n/tm [harm,nodead] ~8" .. MARKED_TAIL, W.macros["FIND"].body:gsub("\n", "|"))
+check("markers follow the row number, not the position", W.macros["FIND"].body:match("Delta\n/tm %[harm,nodead%] ~5") ~= nil)
+check("the addon itself never marks", W.markCalls == 0, W.markCalls)
+ns.WipeTargets()
+for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Mob%d"):format(i) .. "xx") end
+ns.WriteFinderMacro()
+local full = W.macros["FIND"].body
+check("a long list stays within the cap", #full <= 255, #full)
+check("the rows without room go first and unmarked, before /cleartarget", full:match("^/targetexact Mob8xx\n") ~= nil
+      and not full:match("Mob8xx\n/tm") and full:match("\n/cleartarget\n") ~= nil, (full:gsub("\n", "|")))
+local lastRow = "/targetexact Mob1xx\n/tm [harm,nodead] ~8" .. MARKED_TAIL
+check("row 1 is still marked and last", full:sub(-#lastRow) == lastRow, (full:gsub("\n", "|")))
+check("every name is still in FIND", select(2, full:gsub("/targetexact", "")) == 8)
+ns.WipeTargets()
+for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Name%d"):format(i) .. string.rep("x", 18)) end
+ns.WriteFinderMacro()
+check("with no room for any marker, FIND is the plain macro", not W.macros["FIND"].body:match("/tm") and not W.macros["FIND"].body:match("/cleartarget")
+      and W.macros["FIND"].body:sub(-#TAIL) == TAIL, W.macros["FIND"].body:gsub("\n", "|"))
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Kobold")
+ns.WriteFinderMacro()
+local function marks() return W.macros["FIND"].body:match("/tm ") ~= nil end
+check("solo, FIND marks", marks())
+local macroEvents
+for f in pairs(_G.__frames) do if f.events["GROUP_ROSTER_UPDATE"] then macroEvents = f end end
+check("group changes are watched", macroEvents ~= nil and macroEvents.events["PARTY_LEADER_CHANGED"] == true)
+local function groupEvent(event) macroEvents.scripts.OnEvent(macroEvents, event or "GROUP_ROSTER_UPDATE") end
+W.group = "party"
+groupEvent()
+check("a party member who does not lead gets no marker lines", not marks(), W.macros["FIND"].body)
+W.leader = true
+groupEvent("PARTY_LEADER_CHANGED")
+check("the party leader marks", marks())
+W.group, W.leader = "raid", false
+groupEvent()
+check("a plain raid member gets no marker lines", not marks())
+W.assistant = true
+groupEvent()
+check("a raid assistant marks", marks())
+W.macros["FIND"].body = "sentinel"
+groupEvent()
+check("a roster change that keeps the role leaves FIND alone", W.macros["FIND"].body == "sentinel")
+ns.WriteFinderMacro()
+W.units = { player = { name = "Me", secret = true } }
+W.group, W.assistant, W.leader = "party", false, true
+groupEvent()
+check("a hidden leader answer counts as no", not marks())
+W.units = {}
+W.group, W.leader = nil, false
+groupEvent()
+check("back to solo, FIND marks again", marks())
+ns.SetRaidMarkers(false)
+check("unticking rewrites FIND without markers", not marks() and TargetFinderCharDB.raidMarkers == false)
+ns.SetRaidMarkers(true)
+check("ticking puts them back", marks())
+W.macroOrder = {}; W.macros = {}
+W.group = "party"
+groupEvent()
+check("a group change never creates FIND", W.macros["FIND"] == nil)
+W.group = nil
+groupEvent()
+TargetFinderCharDB.raidMarkers = false
 
 section("secret identity guard")
 W.units = { target = { name = "Someone", player = true, friend = true, party = true, secret = true } }
@@ -785,6 +796,7 @@ check("it is labelled", markerBox.Text.text == "Apply Raid Markers", markerBox.T
 local markerAnchor = markerBox.points[1]
 check("it follows the quest box's label one padding step on", markerAnchor.point == "LEFT" and markerAnchor.rel == box.Text
       and markerAnchor.relPoint == "RIGHT" and markerAnchor.x == UI.Space.padding and markerAnchor.y == 0)
+TargetFinderCharDB.raidMarkers = true
 ns.RefreshPanel()
 check("it mirrors the setting", markerBox.checked == true)
 markerBox:SetChecked(false)
@@ -796,11 +808,13 @@ check("ticking saves it again", TargetFinderCharDB.raidMarkers == true)
 markerBox.scripts.OnEnter(markerBox)
 check("the tooltip names each row's marker", W.tooltip[1] == "title:Apply Raid Markers" and W.tooltip[3] == "highlight:Row 1: Skull"
       and W.tooltip[10] == "highlight:Row 8: Star", table.concat(W.tooltip, " / "))
-check("solo, the rights line is plain", W.tooltip[11] == "normal:In a group, markers need leader or assistant rights.", W.tooltip[11])
+check("it says rows without room stay unmarked", W.tooltip[11] == "normal:Rows that do not fit in the 255-character macro stay unmarked, from row 8 up.")
+check("solo, the rights line is plain", W.tooltip[12] == "normal:In a group, markers need leader or assistant rights.", W.tooltip[12])
 W.group = "party"
 markerBox.scripts.OnEnter(markerBox)
-check("without rights, it is an error line", W.tooltip[11] == "error:In a group, markers need leader or assistant rights.", W.tooltip[11])
+check("without rights, it is an error line", W.tooltip[12] == "error:In a group, markers need leader or assistant rights.", W.tooltip[12])
 W.group = nil
+TargetFinderCharDB.raidMarkers = false
 
 section("FIND comes from the window icon")
 local dragIcon
