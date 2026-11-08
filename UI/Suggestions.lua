@@ -258,7 +258,8 @@ function ns.AttachAutocomplete(input, onChange)
             return moveSelection(self, 1)
         end
     end)
-    input:SetScript("OnTextChanged", function(self, userInput)
+    -- Hooked, not set, so InputBoxInstructionsTemplate's own handler still hides the grey hint while the box holds text.
+    input:HookScript("OnTextChanged", function(self, userInput)
         onChange()
         if not userInput then return end
         local typed = ns.Trim(self:GetText())

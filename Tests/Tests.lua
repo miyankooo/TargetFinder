@@ -740,7 +740,24 @@ check("each row shows its number in gold", row1.number.text == 1 and panel.rows[
 check("the quest icon follows the number", row1.icon.points[1].rel == row1.number and row1.icon.points[1].x == TIGHT)
 check("panel width is on the grid", panel.width and onGrid(panel.width), panel.width)
 check("inputs use the 12px body font", row1.input.fontObject == GameFontHighlight, row1.input.fontObject and row1.input.fontObject.name)
-check("inputs use InputBoxTemplate", row1.input.template == "InputBoxTemplate", row1.input.template)
+check("inputs are hint boxes, InputBoxTemplate with Blizzard's grey hint", row1.input.template == "InputBoxInstructionsTemplate",
+      row1.input.template)
+check("the hint sits where typed text starts, in the muted font and the template's grey", row1.input.Instructions.fontObject == GameFontDisable
+      and row1.input.Instructions.color and row1.input.Instructions.color[1] == 0.35)
+check("an empty list says what it takes in its first row", row1.input.Instructions.text == "NPC or player name",
+      row1.input.Instructions.text)
+check("the other rows carry no hint", panel.rows[2].input.Instructions.text == "" and panel.rows[8].input.Instructions.text == "")
+row1.input:SetText("ko")
+row1.input.scripts.OnTextChanged(row1.input, true)
+check("typing hides the hint, since the suggestions hook the template's handler", row1.input.Instructions.shown == false)
+row1.input:SetText("")
+row1.input.scripts.OnTextChanged(row1.input, true)
+check("clearing the box shows it again", row1.input.Instructions.shown == true)
+ns.targets[3] = ns.MakeEntry("Listed")
+ns.RefreshPanel()
+check("once a name is listed, the hint goes", row1.input.Instructions.text == "", row1.input.Instructions.text)
+ns.WipeTargets()
+ns.RefreshPanel()
 check("remove is the client's close button without its hide script", row1.removeBtn.template == "UIPanelCloseButtonNoScripts",
       row1.removeBtn.template)
 check("add is a Blizzard panel button", row1.addBtn.template == "UIPanelButtonTemplate", row1.addBtn.template)

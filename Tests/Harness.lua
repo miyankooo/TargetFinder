@@ -206,6 +206,15 @@ function CreateFrame(kind, name, parent, template)
         end
         f.scripts.OnHide = function(self) self:Close() end
     end
+    -- the hint box: Blizzard's grey Instructions, shown by the template's own OnTextChanged while the box is empty
+    if template == "InputBoxInstructionsTemplate" then
+        f.Instructions = f:CreateFontString()
+        f.Instructions.GetTextColor = function() return 0.35, 0.35, 0.35 end
+        f.Instructions.SetTextColor = function(s, r, g, b) s.color = { r, g, b }; return s end
+        f.Instructions.SetShown = function(s, v) s.shown = v and true or false; return s end
+        f.Instructions.shown = true
+        f.scripts.OnTextChanged = function(self) self.Instructions:SetShown(self:GetText() == "") end
+    end
     -- Blizzard's proc glow carries its start animation
     if template == "ActionButtonSpellAlertTemplate" then
         f.ProcStartAnim = { Play = function(a) a.playing = true end, Stop = function(a) a.playing = false end }

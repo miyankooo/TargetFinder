@@ -62,13 +62,19 @@ local function CreateCheckbox(parent, label)
     return checkbox
 end
 
--- InputBoxTemplate draws its left cap 5 px outside the box (InputBoxTemplates.xml:49), so the caller indents the
--- box by 5 to line the art up with the column.
-local function CreateEditBox(parent, width)
-    local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+-- InputBoxInstructionsTemplate: the same box plus Blizzard's grey hint, so an empty field says what it takes.
+-- The hint moves to the muted font where typed text starts, keeping the template's grey.
+local function CreateHintBox(parent, hint, width)
+    local box = CreateFrame("EditBox", nil, parent, "InputBoxInstructionsTemplate")
     box:SetSize(width or 160, 20)
     box:SetAutoFocus(false)
     box:SetFontObject(GameFontHighlight)
+    local r, g, b = box.Instructions:GetTextColor()
+    box.Instructions:SetFontObject(GameFontDisable)
+    box.Instructions:SetTextColor(r, g, b)
+    box.Instructions:ClearAllPoints()
+    box.Instructions:SetAllPoints()
+    box.Instructions:SetText(hint)
     return box
 end
 
@@ -185,6 +191,9 @@ local STEP_CREATE = "The first name creates your FIND macro."
 local STEP_PLACE = "Drag the icon to an action bar to place FIND."
 local STEP_PRESS = "Press FIND to target the first listed NPC in range."
 
+-- The list's empty state. The rows fill the inset, so instead of a centred line over them the first row's own grey hint says what the list takes while nothing is listed; the attic's gold line already says how to fill it.
+local EMPTY_HINT = "NPC or player name"
+
 local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
 
 local QUEST_LABEL = "Auto Apply Quest NPCs"
@@ -236,7 +245,7 @@ local function updateTrailing(row, slot)
 end
 
 local function buildSlotInput(row, slot)
-    local input = CreateEditBox(row)
+    local input = CreateHintBox(row, "")
     input:SetMaxLetters(40)
     input.slot = slot
 
@@ -363,7 +372,7 @@ local function buildSlotRow(parent, slot)
     buildRowButtons(row, slot)
     row.input = buildSlotInput(row, slot)
 
-    -- InputBoxTemplate hangs only its left cap outside the box, so the box starts that far past one gap.
+    -- InputBoxTemplate, which the hint box inherits, hangs only its left cap outside the box, so the box starts that far past one gap.
     row.input:SetPoint("LEFT", icon, "RIGHT", GAP + EDIT_BOX_CAP, 0)
     row.input:SetPoint("RIGHT", row.addBtn, "LEFT", -GAP, 0)
     row.removeBtn:SetPoint("LEFT", row.input, "RIGHT", TIGHT, 0)
@@ -488,6 +497,7 @@ function ns.RefreshPanel()
     panel.questBox.Text:SetFontObject(ready and GameFontHighlight or GameFontDisable)
     panel.markerBox:SetChecked(TargetFinderCharDB.raidMarkers)
 
+    panel.rows[1].input.Instructions:SetText(next(ns.targets) == nil and EMPTY_HINT or "")
     local icons = ns.QuestieKindIcons()
     for slot = 1, MAX_TARGETS do
         local row = panel.rows[slot]
