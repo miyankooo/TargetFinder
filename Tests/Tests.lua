@@ -609,6 +609,10 @@ check("Escape closes it", escapable)
 check("no bar buttons", panel.barButtons == nil)
 local row1 = panel.rows[1]
 check("rows live in the Inset", row1.parent == panel.Inset)
+local background = panel.Background
+check("the wardrobe's brown panel takes the inset's place, its corners hidden", background and background.template == "CollectionsBackgroundTemplate"
+      and background.allPoints == panel.Inset and background.BGCornerTopLeft.shown == false and background.BGCornerBottomRight.shown == false
+      and panel.Inset.Bg.shown == false and panel.Inset.NineSlice.shown == false)
 local rowAnchor = row1.points[1]
 check("rows are padded on the grid", rowAnchor.x == UI.Space.padding and rowAnchor.y == -UI.Space.padding, rowAnchor.x)
 check("rows sit one gap apart", panel.rows[2].points[1].y == -(UI.Space.padding + UI.Size.row + UI.Space.gap), panel.rows[2].points[1].y)

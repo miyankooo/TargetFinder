@@ -161,6 +161,17 @@ function CreateFrame(kind, name, parent, template)
     if template == "CheckboxWithLabelTemplate" then
         f.Text = f:CreateFontString()
     end
+    -- the wardrobe's brown panel: its border, tile and four corner ornaments
+    if template == "CollectionsBackgroundTemplate" then
+        f.SetAllPoints = function(self, rel) self.allPoints = rel; return self end
+        f.Bg = f:CreateTexture()
+        f.NineSlice = CreateFrame("Frame", nil, f)
+        f.NineSlice.shown = true
+        for _, corner in ipairs({ "BGCornerTopLeft", "BGCornerTopRight", "BGCornerBottomLeft", "BGCornerBottomRight" }) do
+            f[corner] = f:CreateTexture()
+            f[corner].shown = true
+        end
+    end
     -- Blizzard's proc glow carries its start animation
     if template == "ActionButtonSpellAlertTemplate" then
         f.ProcStartAnim = { Play = function(a) a.playing = true end, Stop = function(a) a.playing = false end }
@@ -169,6 +180,7 @@ function CreateFrame(kind, name, parent, template)
     if template == "ButtonFrameTemplate" then
         f.Inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
         f.Inset.Bg = f.Inset:CreateTexture()
+        f.Inset.NineSlice = CreateFrame("Frame", nil, f.Inset)
         f.PortraitContainer = CreateFrame("Frame", nil, f)
         f.PortraitContainer.portrait = f.PortraitContainer:CreateTexture()
         f.GetPortrait = function(self) return self.PortraitContainer.portrait end
@@ -350,6 +362,8 @@ GameTooltip_SetTitle = function(_, text) W.tooltip = { "title:" .. tostring(text
 GameTooltip_AddNormalLine = tooltipLine("normal")
 GameTooltip_AddInstructionLine = tooltipLine("instruction")
 GameTooltip_AddHighlightLine = tooltipLine("highlight")
+-- Blizzard_SharedXMLBase/TextureUtil.lua; the stub only keeps the angle
+function SetClampedTextureRotation(texture, degrees) texture.rotation = degrees end
 GameTooltip_AddDisabledLine = tooltipLine("disabled")
 GameTooltip_AddErrorLine = tooltipLine("error")
 
