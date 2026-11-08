@@ -58,18 +58,11 @@ local function warnMacroCap(name)
         .. " macros. Delete one in the macro book (/m) and try again.")
 end
 
--- The first FIND a character gets opens the macro book on it with its icon glowing, so the player sees the macro Target Finder wrote and where to drag it from. It runs a frame later, so a chat line of the action that created FIND goes first and carries the hint, and the intro adds none of its own then. Its own hint is the account's one first-run line, because a quest fill can create FIND at login.
+-- The first FIND a character gets opens the macro book on it with its icon glowing and the help tip beside it, so the player sees the macro Target Finder wrote and where to drag it from. It runs a frame later, after the write that created FIND has refreshed the window. It adds no chat line, because a quest fill can create FIND at login.
 local function introduceFinder()
     if TargetFinderCharDB.finderIntroduced then return end
     TargetFinderCharDB.finderIntroduced = true
-    C_Timer.After(0, function()
-        if not TargetFinderDB.finderIntroduced then
-            TargetFinderDB.finderIntroduced = true
-            local hint = ns.MacroHint()
-            if hint then ns.Announce(hint) end
-        end
-        ns.ShowFinder()
-    end)
+    C_Timer.After(0, ns.ShowFinder)
 end
 
 local function writeMacro(name, icon, body)

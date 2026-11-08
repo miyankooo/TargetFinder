@@ -7,7 +7,11 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 
 local function initSavedVars()
-    if type(TargetFinderDB) ~= "table" then TargetFinderDB = {} end
+    -- An absent account table is the account's first load, which earns the one welcome line at login.
+    if type(TargetFinderDB) ~= "table" then
+        TargetFinderDB = {}
+        ns.firstRun = true
+    end
     if type(TargetFinderDB.minimap) ~= "table" then
         TargetFinderDB.minimap = { hide = false, minimapPos = ns.MINIMAP_DEFAULT_POS }
     end
@@ -35,6 +39,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         -- Rewrite on login so FIND matches the saved list even if it was edited by hand. Only an existing FIND is edited, because macros may not be loaded yet and a create here could leave two.
         ns.WriteFinderMacro(true, true)
+        if ns.firstRun then
+            ns.firstRun = nil
+            ns.PrintWelcome()
+        end
         self:UnregisterEvent("PLAYER_LOGIN")
     end
 end)

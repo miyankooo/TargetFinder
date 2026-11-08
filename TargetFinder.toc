@@ -28,6 +28,7 @@ Core\UnitMenu.lua
 UI\Suggestions.lua
 UI\Panel.lua
 UI\FinderGlow.lua
+UI\Welcome.lua
 UI\MinimapButton.lua
 
 TargetFinder.lua

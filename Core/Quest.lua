@@ -436,10 +436,10 @@ local function prebuildNameIndex()
     if db then guarded(buildNpcNameIndex, db) end
 end
 
--- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login and in a new zone, swaps them for the closest NPCs the quests need; a light one, after a quest update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Auto Apply Quest NPCs off only the drop runs, for NPCs added from a quest suggestion.
-local function syncQuestNpcs(full)
+-- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login, in a new zone and when a quest is accepted, turned in or abandoned, swaps them for the closest NPCs the quests need; a light one, after an objective update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Auto Apply Quest NPCs off only the drop runs, for NPCs added from a quest suggestion or a manual refresh. manual is the minimap right-click and /tf refresh, which fill the rows even with the box off. Names the player added are never touched: ns.SyncQuestEntries only ever removes or places quest entries.
+local function syncQuestNpcs(full, manual)
     if not ns.QuestieReady() then return end
-    local following = TargetFinderCharDB.questNpcs
+    local following = TargetFinderCharDB.questNpcs or manual
     if full and not following then return end
     if not following and not ns.HasQuestEntries() then return end
     local open
@@ -477,8 +477,16 @@ local function onQuestieReady()
     queueSync(true)
 end
 
-local function onQuestUpdate()
-    queueSync(false)
+-- Questie passes why a quest changed (Public/Enums.lua). Accepting, turning in or abandoning a quest changes which NPCs the log needs, so those run a full sync; an objective update runs the light one. The callback runs before Questie adds an accepted quest to its log (QuestEventHandler.lua:343-349), and the sync waits a frame, so the new quest is there by then.
+local function isLogChange(reason)
+    local api = questieApi()
+    local reasons = api and type(api.Enums) == "table" and api.Enums.QuestUpdateTriggerReason
+    if type(reasons) ~= "table" or reason == nil then return false end
+    return reason == reasons.QUEST_ACCEPTED or reason == reasons.QUEST_TURNED_IN or reason == reasons.QUEST_ABANDONED
+end
+
+local function onQuestUpdate(_, _, reason)
+    queueSync(isLogChange(reason))
 end
 
 -- A new zone or subzone brings other quest NPCs into reach.
@@ -502,6 +510,31 @@ function ns.SetQuestNpcs(on)
         syncQuestNpcs(true)
     else
         ns.SyncQuestEntries({})
+    end
+end
+
+local function questEntryCount()
+    local count = 0
+    for slot = 1, ns.MAX_TARGETS do
+        if ns.targets[slot] and ns.targets[slot].quest then count = count + 1 end
+    end
+    return count
+end
+
+-- The minimap right-click and /tf refresh: the quest rows swap for the quest NPCs closest to the player right now, also with Auto Apply Quest NPCs off. One chat line says what happened, since the window may be closed.
+function ns.RefreshQuestNpcs()
+    if not ns.QuestieReady() then
+        ns.Announce(ns.QuestieExcuse())
+        return
+    end
+    syncQuestNpcs(true, true)
+    local count = questEntryCount()
+    if count > 0 then
+        ns.Announce(("Updated the quest NPCs: %d |4row:rows; filled."):format(count))
+    elseif not ns.FirstEmptySlot() then
+        ns.Announce("Every row holds a name you added, so no quest NPC fits. Remove one first.")
+    else
+        ns.Announce("No quest NPCs found nearby.")
     end
 end
 

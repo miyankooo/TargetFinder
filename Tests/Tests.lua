@@ -76,8 +76,13 @@ check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
 check("Auto Apply Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
 check("Apply Raid Markers starts on", TargetFinderCharDB.raidMarkers == true)
 check("unit menus registered", W.menuHooks["MENU_UNIT_TARGET"] ~= nil)
-check("group, chat and friends menus left alone", W.menuHooks["MENU_UNIT_PARTY"] == nil and W.menuHooks["MENU_UNIT_RAID_PLAYER"] == nil
-      and W.menuHooks["MENU_UNIT_RAID"] == nil and W.menuHooks["MENU_UNIT_FRIEND"] == nil and W.menuHooks["MENU_UNIT_PLAYER"] == nil)
+local targetFrameMenus = true
+for _, tag in ipairs({ "MENU_UNIT_TARGET", "MENU_UNIT_PLAYER", "MENU_UNIT_ENEMY_PLAYER", "MENU_UNIT_PARTY", "MENU_UNIT_RAID_PLAYER",
+    "MENU_UNIT_FOCUS", "MENU_UNIT_BOSS" }) do
+    if not W.menuHooks[tag] then targetFrameMenus = false end
+end
+check("every menu the target frame opens is registered", targetFrameMenus)
+check("chat, friends and self menus left alone", W.menuHooks["MENU_UNIT_FRIEND"] == nil and W.menuHooks["MENU_UNIT_SELF"] == nil)
 
 section("saved-variable sanitising")
 ns.AdoptSaved({ {name="Good", quest=true, kind=1}, {name=""}, {nope=true}, "junk", {name="Also", kind=2, quest="yes"},
@@ -211,12 +216,14 @@ W.nilChecks = 0
 check("nil is answered without calling canaccessvalue", ns.CanAccess(nil) == true and W.nilChecks == 0, W.nilChecks)
 
 section("unit menu resolves the name from the unit, not context.name")
+-- Blizzard's unit menu as the ModifyMenu callback finds it: the unit's name title first, then Blizzard's own entries
 local root = {
-    items = {},
-    CreateDivider = function(self) self.items[#self.items+1] = {kind="divider"} end,
-    CreateTitle = function(self, t) self.items[#self.items+1] = {kind="title", text=t} end,
-    CreateButton = function(self, t, fn) self.items[#self.items+1] = {kind="button", text=t, fn=fn} end,
+    Insert = function(self, description, index) table.insert(self.items, index, description); return description end,
 }
+local function resetRoot()
+    root.items = { {kind="title", text="Unit Name"}, {kind="button", text="Set Focus"} }
+end
+resetRoot()
 local function menuButtons()
     local labels = {}
     for _, it in ipairs(root.items) do if it.kind == "button" then labels[it.text] = it.fn end end
@@ -260,23 +267,41 @@ ns.WipeTargets()
 ns.SetSlot(1, "Typed In Window")
 check("typing in the window does not open the macro book", MacroFrame.shown == false)
 
-section("friendly players get no Target Finder entries")
+section("players and NPCs get Track at the top of the menu")
 ns.WipeTargets()
-root.items = {}
-W.units = { target = { name = "Someguy", player = true, friend = true } }
-W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Someguy" })
-check("no section for a friendly player", #root.items == 0, #root.items)
+resetRoot()
+W.units = { target = { name = "Mangeclaw" } }
+W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon", fromTargetFrame = true })
+check("the unit's own name title stays first", root.items[1].text == "Unit Name")
+check("Target Finder's title, Track and a divider follow it", root.items[2].kind == "title" and root.items[2].text == "Target Finder"
+      and root.items[3].kind == "button" and root.items[3].text == "Track" and root.items[4].kind == "divider")
+check("Blizzard's entries come after", root.items[5].text == "Set Focus")
+W.tooltip = {}
+root.items[3].tooltip(GameTooltip)
+check("Track explains itself", W.tooltip[1] == "title:Track" and W.tooltip[2] == "normal:Puts Mangeclaw first on the FIND list, so FIND targets it before the rest.",
+      table.concat(W.tooltip, " / "))
+for _, who in ipairs({
+    { tag = "MENU_UNIT_PLAYER", unit = { name = "Someguy", player = true, friend = true } },
+    { tag = "MENU_UNIT_PARTY", unit = { name = "Buddy", player = true, friend = true, party = true } },
+    { tag = "MENU_UNIT_RAID_PLAYER", unit = { name = "Raider", player = true, friend = true, raid = true } },
+    { tag = "MENU_UNIT_ENEMY_PLAYER", unit = { name = "Rogue", player = true } },
+}) do
+    resetRoot()
+    W.units = { target = who.unit }
+    W.menuHooks[who.tag](nil, root, { unit = "target", name = who.unit.name })
+    check(who.tag .. " offers Track at the top", root.items[3].text == "Track")
+end
+resetRoot()
 W.units = { target = { name = "Buddy", player = true, friend = true, party = true } }
-W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Buddy" })
-check("no section for a group member", #root.items == 0, #root.items)
-W.units = { target = { name = "Rogue", player = true } }
-W.menuHooks["MENU_UNIT_ENEMY_PLAYER"](nil, root, { unit = "target", name = "Rogue" })
-check("an enemy player can be tracked", menuButtons()["Track"] ~= nil)
+ns.targets[2] = ns.MakeEntry("Buddy")
+W.menuHooks["MENU_UNIT_PARTY"](nil, root, { unit = "target", name = "Buddy" })
+check("a tracked player offers Untrack", root.items[3].text == "Untrack")
+ns.WipeTargets()
 
 section("menu action follows the exact name")
 ns.WipeTargets()
 ns.targets[2] = ns.MakeEntry("Auctioneer Chillgular")
-root.items = {}
+resetRoot()
 W.units = { target = { name = "Auctioneer Chillgular" } }
 W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon" })
 local labels = menuButtons()
@@ -289,7 +314,7 @@ check("Untrack removes the entry", ns.SlotForName("Auctioneer Chillgular") == ni
 check("one chat line with the window closed", #W.chat == 1 and chatHas("Removed Auctioneer Chillgular%.$"), table.concat(W.chat, " / "))
 ns.WipeTargets()
 ns.targets[2] = ns.MakeEntry("Auctioneer Chillgular")
-root.items = {}
+resetRoot()
 W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon" })
 local staleUntrack = menuButtons()["Untrack"]
 -- a quest sync refills the rows while the menu is open
@@ -299,18 +324,18 @@ staleUntrack(); RunTimers()
 check("Untrack removes the name, not the row it held when the menu opened",
       ns.SlotForName("Auctioneer Chillgular") == nil and ns.SlotForName("Kobold Laborer") == 2)
 ns.targets[1] = ns.MakeEntry("Auctioneer")
-root.items = {}
+resetRoot()
 W.menuHooks["MENU_UNIT_TARGET"](nil, root, { unit = "target", name = "Raid Target Icon" })
 check("a prefix entry does not cover the NPC", menuButtons()["Track"] ~= nil)
 
 section("menu does not test secret booleans")
-root.items = {}
+resetRoot()
 W.units = { target = { name = "Enemy", player = true, secret = true } }
 local menuOk, menuErr = pcall(function()
     W.menuHooks["MENU_UNIT_ENEMY_PLAYER"](nil, root, { unit = "target", name = "Enemy" })
 end)
 check("menu builds without error under restriction", menuOk, menuErr)
-check("a hidden name adds nothing", #root.items == 0, #root.items)
+check("a hidden name adds nothing", #root.items == 2, #root.items)
 
 section("Questie readiness follows Questie.API.isReady")
 check("absent Questie reports not loaded", ns.QuestieReady() == false)
@@ -340,13 +365,20 @@ for f in pairs(_G.__frames) do if f.events["PLAYER_LOGIN"] then login = f end en
 W.macroOrder = {}; W.macros = {}
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Saved")
+W.chat = {}
 login.scripts.OnEvent(login, "PLAYER_LOGIN")
+check("the account's first login prints one welcome line", #W.chat == 1, table.concat(W.chat, " / "))
+check("it says what the addon does and names the window, the menu and /tf", chatHas("One FIND macro targets the NPCs your quests need")
+      and chatHas("|Haddon:TargetFinder|h%[Target Finder%]|h") and chatHas("right%-click a portrait and pick Track")
+      and chatHas("Type /tf help for every command%.$"), W.chat[1])
 check("login registers for Questie's ready callback", #W.readyCallbacks == 1 and type(W.readyCallbacks[1]) == "function")
 check("login registers for Questie's quest updates", #W.questCallbacks == 1)
 check("login never creates FIND", W.macros["FIND"] == nil)
 ns.WriteFinderMacro()
 W.macros["FIND"].body = "edited by hand"
+W.chat = {}
 login.scripts.OnEvent(login, "PLAYER_LOGIN")
+check("a later login prints nothing", #W.chat == 0, table.concat(W.chat, " / "))
 check("login rewrites an existing FIND", W.macros["FIND"].body == "/targetexact Saved" .. TAIL, W.macros["FIND"].body)
 
 _G.Questie.API.isReady = true
@@ -416,7 +448,7 @@ local function fakeQuestie()
         return modules[name]
     end }
     _G.Questie = {
-        API = { isReady = true },
+        API = { isReady = true, Enums = { QuestUpdateTriggerReason = { QUEST_ACCEPTED = 1, QUEST_UPDATED = 2, QUEST_TURNED_IN = 3, QUEST_ABANDONED = 4 } } },
         usedIcons = { [1] = "slay", [2] = "loot", [8] = "complete" },
         ICON_TYPE_SLAY = 1, ICON_TYPE_LOOT = 2, ICON_TYPE_COMPLETE = 8,
     }
@@ -565,6 +597,49 @@ W.questCallbacks[1](100, 1, 2)
 RunTimers()
 check("no quest log walk without quest entries", openReads == 0, openReads)
 ns.OpenQuestNpcNames = realOpen
+TargetFinderCharDB.questNpcs = true
+
+section("quest log changes and the manual refresh never move typed rows")
+TargetFinderCharDB.questNpcs = true
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Mine One")
+ns.targets[2] = ns.MakeEntry("Mine Two")
+-- a quest NPC the log still needs but that is not nearby: the light sync keeps it, a full one swaps it out
+ns.targets[3] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP)
+local function typedHeld() return ns.targets[1].name == "Mine One" and ns.targets[2].name == "Mine Two" end
+W.questCallbacks[1](100, 1, 2)
+RunTimers()
+check("an objective update keeps a needed quest row", ns.SlotForName("Kobold Far Away") == 3)
+check("and the typed rows", typedHeld())
+for _, case in ipairs({ { reason = 1, label = "accepting" }, { reason = 3, label = "turning in" }, { reason = 4, label = "abandoning" } }) do
+    ns.targets[3] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP)
+    W.questCallbacks[1](100, nil, case.reason)
+    RunTimers()
+    check(case.label .. " a quest swaps the quest rows for the closest NPCs", ns.SlotForName("Kobold Far Away") == nil
+          and ns.SlotForName("Kobold Miner") ~= nil)
+    check(case.label .. " a quest keeps rows 1 and 2", typedHeld())
+end
+check("quest NPCs only take free rows", ns.SlotForName("Kobold Miner") >= 3)
+ns.SetQuestNpcs(false)
+W.chat = {}
+W.ldbObject.OnClick(nil, "RightButton")
+check("the minimap right-click fills quest NPCs even with the box off", questEntries() == 3 and typedHeld(), questEntries())
+check("and says so in one line", #W.chat == 1 and chatHas("Updated the quest NPCs: 3 |4row:rows; filled%.$"), table.concat(W.chat, " / "))
+check("the box stays off", TargetFinderCharDB.questNpcs == false)
+W.chat = {}
+SlashCmdList.TARGETFINDER("refresh")
+check("/tf refresh does the same", questEntries() == 3 and typedHeld() and #W.chat == 1)
+for slot = 3, 8 do ns.targets[slot] = ns.MakeEntry("Typed" .. slot) end
+W.chat = {}
+SlashCmdList.TARGETFINDER("refresh")
+check("with every row typed, nothing is replaced", questEntries() == 0 and typedHeld() and ns.SlotForName("Typed8") == 8)
+check("and the line says why", chatHas("Every row holds a name you added, so no quest NPC fits%. Remove one first%.$"), W.chat[1])
+_G.Questie.API.isReady = false
+W.chat = {}
+W.ldbObject.OnClick(nil, "RightButton")
+check("while Questie loads, the line says so", chatHas("Questie is still loading%.$"), W.chat[1])
+_G.Questie.API.isReady = true
+ns.WipeTargets()
 TargetFinderCharDB.questNpcs = true
 
 section("search suggestions")
@@ -733,7 +808,7 @@ check("a button sits on the portrait", dragIcon ~= nil)
 check("it drags with the left button", dragIcon and dragIcon.scripts.OnDragStart ~= nil)
 W.macroOrder = {}; W.macros = {}; W.cursorMacro = nil; W.actions = {}
 ns.RefreshPanel()
-check("the gold help line says how to fill the list", panel.help.text == "Type NPC names below or right-click an NPC to Track."
+check("the gold help line says how to fill the list", panel.help.text == "Type names below or right-click a portrait to Track."
       and panel.help.fontObject == UI.Font.heading, panel.help.text)
 check("the white step line sits one band below it", panel.nextStep.fontObject == UI.Font.body
       and panel.help.points[1].y - panel.nextStep.points[1].y == 2 * UI.Space.gap)
@@ -826,9 +901,10 @@ check("LibDBIcon launcher registered at login", W.ldbObject ~= nil)
 check("launcher icon is the toc icon", W.ldbObject.icon == toc["IconTexture"], W.ldbObject.icon)
 check("launcher is named after the addon", W.ldbObject.type == "launcher" and W.ldbObject.text == "Target Finder")
 W.ldbObject.OnTooltipShow(GameTooltip)
-check("minimap tooltip says what a click does and what is missing",
+check("minimap tooltip says what each click does and what is missing",
       W.tooltip[1] == "title:Target Finder" and W.tooltip[2] == "instruction:Click to toggle the window."
-      and W.tooltip[3] == "error:Questie is not loaded.", table.concat(W.tooltip, " / "))
+      and W.tooltip[3] == "instruction:Right-click to update the quest NPCs." and W.tooltip[4] == "error:Questie is not loaded.",
+      table.concat(W.tooltip, " / "))
 local entries = {}
 for _, data in ipairs(AddonCompartmentFrame.registeredAddons) do
     if data.text == "Target Finder" then entries[#entries+1] = data end
@@ -838,8 +914,11 @@ local entry = entries[1]
 local wasShown = panel.shown
 entry.func(nil, { buttonName = "LeftButton" })
 check("addon menu left-click toggles the panel", panel.shown ~= wasShown)
+W.chat = {}
+local shownBeforeRight = panel.shown
 entry.func(nil, { buttonName = "RightButton" })
-check("a right-click toggles it too", panel.shown == wasShown)
+check("a right-click updates the quest NPCs instead of toggling", panel.shown == shownBeforeRight and chatHas("Questie is not loaded%.$"),
+      table.concat(W.chat, " / "))
 
 section("combat defers the macro write")
 ns.WipeTargets()
@@ -954,14 +1033,44 @@ SlashCmdList.TARGETFINDER("add")
 check("/tf add with no name and no target explains", chatHas("Type a name or target a unit first%.$") and ns.targets[1] == nil,
       table.concat(W.chat, " / "))
 local shownBefore = panel.shown
+W.chat = {}
 SlashCmdList.TARGETFINDER("assist Buddy")
-check("/tf assist is gone and toggles the window", panel.shown ~= shownBefore and W.macros["ASSIST"] == nil and ns.SlotForName("Buddy") == nil)
+check("an unknown word opens nothing and points to help", panel.shown == shownBefore and W.macros["ASSIST"] == nil
+      and #W.chat == 1 and chatHas("Unknown command%. Type /tf help for the list%.$"), table.concat(W.chat, " / "))
+W.chat = {}
+SlashCmdList.TARGETFINDER("help")
+check("/tf help names every command in one line", #W.chat == 1 and chatHas("/tf add") and chatHas("/tf refresh") and chatHas("/tf minimap")
+      and chatHas("/tf intro") and chatHas("/tf help for this list%.$"), W.chat[1])
+W.chat = {}
+SlashCmdList.TARGETFINDER("?")
+check("/tf ? is help too", #W.chat == 1 and chatHas("/tf help for this list"))
+TargetFinderDB.tipSeen = true
+W.chat = {}
+SlashCmdList.TARGETFINDER("intro")
+check("/tf intro prints the welcome line again", #W.chat == 1 and chatHas("One FIND macro targets"), W.chat[1])
+check("and brings the tip back", TargetFinderDB.tipSeen == nil)
+if panel.shown then ns.TogglePanel() end
+EventRegistry.callbacks.SetItemRef("addon:OtherAddon")
+check("another addon's link does nothing", panel.shown == false)
+W.secretsOn = true
+EventRegistry.callbacks.SetItemRef({ __secret = true })
+W.secretsOn = false
+check("a secret link does nothing", panel.shown == false)
+EventRegistry.callbacks.SetItemRef("addon:TargetFinder")
+check("the welcome link opens the window", panel.shown == true)
+EventRegistry.callbacks.SetItemRef("addon:TargetFinder")
+check("and never closes it", panel.shown == true)
 
 section("the first FIND opens the macro book with its icon glowing")
 W.macroOrder = {}; W.macros = {}; W.actions = {}; W.timers = {}
 MacroFrame.shown, MacroFrame.tab, MacroFrame.selected = false, nil, nil
 TargetFinderCharDB.finderIntroduced = nil
-TargetFinderDB.finderIntroduced = nil
+TargetFinderDB.tipSeen = nil
+local tip
+for _, f in ipairs(W.created) do
+    if f.template == "HelpTipTemplate" then tip = f end
+end
+if tip then tip:Hide() end
 ns.WipeTargets()
 ns.SyncQuestEntries({ { name = "Quest Wolf", kind = ns.KIND_KILL } })
 check("a quest fill creates FIND", W.macros["FIND"] ~= nil)
@@ -977,22 +1086,38 @@ end
 check("Blizzard's proc glow sits on the large macro icon", glow and glow.parent == MacroFrame.SelectedMacroButton)
 check("it is scaled like an action button's", glow and glow.width == 22 * 1.4 and glow.points[1].point == "CENTER")
 check("it shows and plays", glow and glow.shown == true and glow.ProcStartAnim.playing == true)
-check("the account's first FIND adds at most one chat line", #W.chat <= 1, table.concat(W.chat, " / "))
-check("both flags are set", TargetFinderCharDB.finderIntroduced == true and TargetFinderDB.finderIntroduced == true)
+check("the introduction adds no chat line", #W.chat == 0, table.concat(W.chat, " / "))
+check("the character is marked introduced", TargetFinderCharDB.finderIntroduced == true)
+for _, f in ipairs(W.created) do
+    if f.template == "HelpTipTemplate" then tip = f end
+end
+check("Blizzard's help tip points at the large icon", tip and tip.shown == true and tip.target == MacroFrame.SelectedMacroButton
+      and tip.parent == MacroFrame.SelectedMacroButton)
+check("it says what to do with FIND", tip.info.text == "Drag FIND, the macro Target Finder created for you, to an action bar."
+      and tip.info.buttonStyle == HelpTip.ButtonStyle.Close and tip.info.targetPoint == HelpTip.Point.RightEdgeCenter)
 table.insert(W.macroOrder, 1, "Other")
 W.macros["Other"] = { perCharacter = true }
 MacroFrame:SelectMacro(1)
 check("selecting another macro hides it", glow.shown == false)
+check("and the tip, without marking it seen", tip.shown == false and TargetFinderDB.tipSeen == nil)
 MacroFrame:SelectMacro(GetMacroIndexByName("FIND") - 120)
 check("selecting FIND again brings it back", glow.shown == true and glow.ProcStartAnim.playing == true)
 W.actions[3] = { kind = "macro", id = GetMacroIndexByName("FIND") }
 glow.scripts.OnEvent(glow, "ACTIONBAR_SLOT_CHANGED")
 check("FIND on a bar ends it", glow.shown == false and glow.events["ACTIONBAR_SLOT_CHANGED"] == nil)
+check("placing FIND counts the tip as seen", tip.shown == false and TargetFinderDB.tipSeen == true)
 MacroFrame:SelectMacro(GetMacroIndexByName("FIND") - 120)
 check("and it stays off", glow.shown == false)
 W.actions = {}
 ns.ShowFinder()
 check("Track or /tf add brings it back while FIND is on no bar", glow.shown == true)
+check("a seen tip stays away", tip.shown == false)
+TargetFinderDB.tipSeen = nil
+HideMacroFrame()
+ns.ShowFinder()
+check("an unseen tip comes back with the glow", tip.shown == true)
+tip:Acknowledge()
+check("its close button marks it seen", TargetFinderDB.tipSeen == true and tip.shown == false)
 HideMacroFrame()
 check("closing the macro book ends it", glow.shown == false and glow.events["ACTIONBAR_SLOT_CHANGED"] == nil)
 W.macroOrder = {}; W.macros = {}

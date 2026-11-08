@@ -178,6 +178,16 @@ function CreateFrame(kind, name, parent, template)
             f[corner].shown = true
         end
     end
+    -- the help tip template: Init stores what it was given, the close button runs the acknowledge callback
+    if template == "HelpTipTemplate" then
+        f.Init = function(self, parent, info, relative) self.info, self.target = info, relative; return self end
+        f.Acknowledge = function(self)
+            local info = self.info
+            self.info = nil
+            self:Hide()
+            if info and info.onAcknowledgeCallback then info.onAcknowledgeCallback() end
+        end
+    end
     -- Blizzard's proc glow carries its start animation
     if template == "ActionButtonSpellAlertTemplate" then
         f.ProcStartAnim = { Play = function(a) a.playing = true end, Stop = function(a) a.playing = false end }
@@ -324,6 +334,24 @@ GameTooltip = CreateFrame("Frame")
 function GameTooltip_Hide() GameTooltip:Hide() end
 MacroFrame = nil
 Menu = { ModifyMenu = function(tag, cb) W.menuHooks = W.menuHooks or {}; W.menuHooks[tag] = cb end }
+-- menu element descriptions: kind, text, callback and the tooltip function SetTooltip hands over
+local function menuElement(kind, text, callback)
+    return { kind = kind, text = text, fn = callback, SetTooltip = function(self, fn) self.tooltip = fn end }
+end
+MenuUtil = {
+    CreateTitle = function(text) return menuElement("title", text) end,
+    CreateButton = function(text, callback) return menuElement("button", text, callback) end,
+    CreateDivider = function() return menuElement("divider") end,
+}
+-- the addon link pieces and the EventRegistry event Blizzard fires for an addon link click
+LinkTypes = { AddOn = "addon" }
+LinkUtil = { FormatLink = function(kind, text, data) return "|H" .. kind .. ":" .. data .. "|h" .. text .. "|h" end }
+EventRegistry = {
+    callbacks = {},
+    RegisterCallback = function(self, event, fn, owner) self.callbacks[event] = function(...) fn(owner, ...) end end,
+}
+-- Blizzard's help tip: the pieces the addon reads, and a template whose close button acknowledges
+HelpTip = { width = 226, ButtonStyle = { None = 0, Okay = 1, Close = 2 }, Point = { RightEdgeCenter = 8 } }
 ADD = "Add"
 CLEAR_ALL = "Clear All"
 PRESS_TAB = "Press Tab"

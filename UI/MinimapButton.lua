@@ -5,9 +5,10 @@ local UI = LibStub("LibNativeUI-1.0")
 
 local launcher
 
--- Blizzard's tooltip helpers give the lines under the launcher's title the standard colours: a green instruction, red for what is missing.
+-- Blizzard's tooltip helpers give the lines under the launcher's title the standard colours: green instructions, red for what is missing.
 local function fillLauncherTooltip(tooltip)
     GameTooltip_AddInstructionLine(tooltip, "Click to toggle the window.")
+    GameTooltip_AddInstructionLine(tooltip, "Right-click to update the quest NPCs.")
     if not ns.QuestieReady() then
         GameTooltip_AddErrorLine(tooltip, ns.QuestieExcuse())
     end
@@ -18,7 +19,14 @@ function ns.SetupMinimapButton()
         title = ns.ADDON_NAME,
         icon = ns.ADDON_ICON,
         db = TargetFinderDB.minimap,
-        onClick = function() ns.TogglePanel() end,
+        -- LibDBIcon hands the minimap button's mouse button through, and the addon menu passes its own the same way.
+        onClick = function(button)
+            if button == "RightButton" then
+                ns.RefreshQuestNpcs()
+            else
+                ns.TogglePanel()
+            end
+        end,
         tooltip = fillLauncherTooltip,
     })
 end
@@ -30,12 +38,15 @@ local function toggleMinimapButton()
     ns.Announce(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
 end
 
--- /tf add takes a name, or the current target's when none is typed.
+local HELP = "Type /tf for the window, /tf add with a name or a target to track it, /tf refresh to update the quest NPCs, "
+    .. "/tf minimap to show or hide the minimap button, /tf intro to see the welcome line and the tip again, or /tf help for this list."
+
+-- /tf add takes a name, or the current target's when none is typed. The bare command opens the window; a word it does not know opens nothing.
 local function onSlash(msg)
     local command, rest = (ns.Trim(msg) or ""):match("^(%S*)%s*(.-)$")
     command = command:lower()
-    if command == "minimap" then
-        toggleMinimapButton()
+    if command == "" then
+        ns.TogglePanel()
     elseif command == "add" then
         local name = ns.Trim(rest) or ns.ReadableName("target")
         if name then
@@ -43,8 +54,16 @@ local function onSlash(msg)
         else
             ns.Announce("Type a name or target a unit first.")
         end
+    elseif command == "refresh" then
+        ns.RefreshQuestNpcs()
+    elseif command == "minimap" then
+        toggleMinimapButton()
+    elseif command == "intro" then
+        ns.ReplayIntro()
+    elseif command == "help" or command == "?" then
+        ns.Announce(HELP)
     else
-        ns.TogglePanel()
+        ns.Announce("Unknown command. Type /tf help for the list.")
     end
 end
 

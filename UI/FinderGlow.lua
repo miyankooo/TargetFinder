@@ -1,12 +1,40 @@
 local _, ns = ...
 
--- Blizzard's proc glow (ActionButtonSpellAlertTemplate, Blizzard_ActionBar/Shared/ActionButtonSpellAlerts.xml) around the macro book's large icon, the one the player drags FIND from. The glow is the addon's own frame laid over that button, sized and centred as GetAlertFrame does it. ActionButtonSpellAlertManager is not used, because it stores its frame on Blizzard's button and the button in its own table, which taints both.
+-- The macro book callout for FIND: Blizzard's proc glow around the large icon the player drags FIND from, plus the addon's one help tip beside it. Both show while the macro book shows FIND and FIND sits on no bar.
+
+-- The glow is ActionButtonSpellAlertTemplate (Blizzard_ActionBar/Shared/ActionButtonSpellAlerts.xml) as the addon's own frame laid over that button, sized and centred as GetAlertFrame does it. ActionButtonSpellAlertManager is not used, because it stores its frame on Blizzard's button and the button in its own table, which taints both.
 local GLOW_SCALE = 1.4
 
-local glow
+-- The help tip is an own HelpTipTemplate frame, never HelpTip:Show, which takes a frame from Blizzard's shared pool and taints the help tips Blizzard shows later. Closing it or placing FIND marks it seen for the account, and /tf intro clears that.
+local TIP_TEXT = "Drag FIND, the macro Target Finder created for you, to an action bar."
+
+local glow, tip
 local active = false
 
--- The large icon shows whichever macro is selected, so the glow only shows while that is FIND. GetSelectedIndex and GetMacroDataIndex only read the selector (Blizzard_MacroUI.lua:262 and 310).
+local tipInfo = {
+    text = TIP_TEXT,
+    buttonStyle = HelpTip.ButtonStyle.Close,
+    targetPoint = HelpTip.Point.RightEdgeCenter,
+    onAcknowledgeCallback = function() TargetFinderDB.tipSeen = true end,
+}
+
+local function showTip(button)
+    if TargetFinderDB.tipSeen or (tip and tip:IsShown()) then return end
+    if not tip then
+        tip = CreateFrame("Frame", nil, button, "HelpTipTemplate")
+        tip.width = HelpTip.width
+        tip:SetWidth(tip.width)
+    end
+    tip:Init(button, tipInfo, button)
+    tip:Show()
+end
+
+-- A hide without the close button leaves the tip unseen, so it comes back at the next chance.
+local function hideTip()
+    if tip and tip:IsShown() then tip:Hide() end
+end
+
+-- The large icon shows whichever macro is selected, so the callout only shows while that is FIND. GetSelectedIndex and GetMacroDataIndex only read the selector (Blizzard_MacroUI.lua:262 and 310).
 local function finderSelected()
     local index = MacroFrame:GetSelectedIndex()
     if not index then return false end
@@ -14,13 +42,16 @@ local function finderSelected()
 end
 
 local function update()
-    glow:SetShown(active and MacroFrame:IsShown() and finderSelected())
+    local show = active and MacroFrame:IsShown() and finderSelected()
+    glow:SetShown(show)
+    if show then showTip(MacroFrame.SelectedMacroButton) else hideTip() end
 end
 
 local function stop()
     active = false
     glow:UnregisterEvent("ACTIONBAR_SLOT_CHANGED")
     glow:Hide()
+    hideTip()
 end
 
 local function build()
@@ -34,13 +65,15 @@ local function build()
     glow:HookScript("OnShow", function(self) self.ProcStartAnim:Play() end)
     glow:HookScript("OnHide", function(self) self.ProcStartAnim:Stop() end)
 
-    -- The glow ends for good once FIND lands on a bar or the macro book closes.
+    -- FIND on a bar is what the tip asks for, so it counts as seen and the callout ends for good. Closing the macro book only ends it until the next time it opens on FIND.
     glow:SetScript("OnEvent", function()
-        if ns.FinderOnBar() then stop() end
+        if not ns.FinderOnBar() then return end
+        TargetFinderDB.tipSeen = true
+        stop()
     end)
     MacroFrame:HookScript("OnHide", stop)
 
-    -- A secure post-hook, so picking another macro hides the glow and picking FIND again brings it back.
+    -- A secure post-hook, so picking another macro hides the callout and picking FIND again brings it back.
     hooksecurefunc(MacroFrame, "SelectMacro", update)
 end
 

@@ -13,7 +13,7 @@ local PANEL_WIDTH = 400
 local ROW_PITCH = UI.Size.row + UI.Space.gap
 
 -- The attic's first line says how to fill the list. The second names the next FIND step: the first name creates it, then the player places it, then presses it.
-local HELP_ADD = "Type NPC names below or right-click an NPC to Track."
+local HELP_ADD = "Type names below or right-click a portrait to Track."
 local STEP_CREATE = "The first name creates your FIND macro."
 local STEP_PLACE = "Drag the icon to an action bar to place FIND."
 local STEP_PRESS = "Press FIND to target the first listed NPC in range."
@@ -21,7 +21,8 @@ local STEP_PRESS = "Press FIND to target the first listed NPC in range."
 local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
 
 local QUEST_LABEL = "Auto Apply Quest NPCs"
-local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your quests that are closest to you, and keeps them up to date as you quest and change zones. They leave once done. Names you typed stay."
+local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your quests that are closest to you. They update when you accept, turn in or abandon a quest and when you change zones, and leave once done. Names you added are never replaced."
+local QUEST_REFRESH = "Right-click the minimap button or type /tf refresh to update them now, also with this box off."
 
 local MARKER_LABEL = "Apply Raid Markers"
 local MARKER_HELP = "When you target an NPC from the list, it gets the raid marker of its row."
@@ -164,6 +165,7 @@ end
 local function fillQuestTooltip(tooltip)
     GameTooltip_SetTitle(tooltip, QUEST_LABEL)
     GameTooltip_AddNormalLine(tooltip, QUEST_HELP)
+    GameTooltip_AddInstructionLine(tooltip, QUEST_REFRESH)
     if not ns.QuestieReady() then
         GameTooltip_AddErrorLine(tooltip, ns.QuestieExcuse())
     end
@@ -289,3 +291,8 @@ end
 
 -- The minimap button, the addon menu and /tf share this one toggle.
 ns.TogglePanel = UI.CreateToggle(buildPanel)
+
+-- The welcome line's link only ever opens the window.
+function ns.ShowPanel()
+    if not ns.PanelShown() then ns.TogglePanel() end
+end
