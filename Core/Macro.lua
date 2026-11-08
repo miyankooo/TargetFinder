@@ -54,7 +54,7 @@ local function buildFindBody()
     return content .. closing
 end
 
--- EditMacro and CreateMacro are blocked in combat, so a write made then is stashed and replayed on PLAYER_REGEN_ENABLED. The on-screen red notice fires once per combat session and only for the player's own changes, since quest updates land in nearly every fight.
+-- EditMacro and CreateMacro are blocked in combat, so a write made then is stashed and replayed on PLAYER_REGEN_ENABLED. The on-screen red notice fires once per combat session and only for the player's own changes, since quest updates land in nearly every fight. It is Blizzard's red error text for addons (UIErrorsFrame.lua:166, AddExternalErrorMessage), which flashes a repeat instead of stacking it.
 local pendingMacros = {}
 local notifiedCombat = false
 local capWarned = false
@@ -88,7 +88,7 @@ local function queueMacro(name, icon, body, quiet)
         pendingMacros[name] = { icon = icon, body = body }
         if not quiet and not notifiedCombat then
             notifiedCombat = true
-            UIErrorsFrame:AddMessage(ns.title .. ": FIND updates after combat.", RED_FONT_COLOR:GetRGB())
+            UIErrorsFrame:AddExternalErrorMessage("FIND updates after combat.")
         end
         return
     end

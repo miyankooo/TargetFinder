@@ -354,7 +354,7 @@ UNKNOWN = "Unknown"
 UIParent = CreateFrame("Frame")
 UISpecialFrames = {}
 SlashCmdList = {}
-UIErrorsFrame = { AddMessage = function(_, m) W.errors[#W.errors+1] = m end }
+UIErrorsFrame = { AddExternalErrorMessage = function(_, m) W.errors[#W.errors+1] = m end }
 GameTooltip = CreateFrame("Frame")
 function GameTooltip_Hide() GameTooltip:Hide() end
 MacroFrame = nil

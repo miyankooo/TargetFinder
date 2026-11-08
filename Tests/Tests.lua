@@ -1022,7 +1022,7 @@ regen.scripts.OnEvent(regen, "PLAYER_REGEN_ENABLED")
 check("and lands after combat", W.macros["FIND"].body:match("/targetexact Auto") ~= nil, W.macros["FIND"].body)
 W.inCombat = true
 ns.RemoveFinder(2)
-check("a removal in combat shows the notice", #W.errors == 1 and W.errors[1] == "Target Finder: FIND updates after combat.", W.errors[1])
+check("a removal in combat shows Blizzard's red error text", #W.errors == 1 and W.errors[1] == "FIND updates after combat.", W.errors[1])
 W.inCombat = false
 regen.scripts.OnEvent(regen, "PLAYER_REGEN_ENABLED")
 
