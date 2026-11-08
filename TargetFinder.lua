@@ -14,8 +14,11 @@ local function initSavedVars()
     if type(TargetFinderDB.position) ~= "table" then TargetFinderDB.position = {} end
     if type(TargetFinderCharDB) ~= "table" then TargetFinderCharDB = {} end
 
-    -- Quest NPCs fill the list unless the player turned the box off.
+    -- Auto Apply Quest NPCs fills the list unless the player turned the box off.
     if type(TargetFinderCharDB.questNpcs) ~= "boolean" then TargetFinderCharDB.questNpcs = true end
+
+    -- Listed NPCs get their row's raid marker unless the player turned the box off.
+    if type(TargetFinderCharDB.raidMarkers) ~= "boolean" then TargetFinderCharDB.raidMarkers = true end
 
     -- Adopt validates and rebuilds the list, then the saved variable is pointed at the live table so later mutations persist with no explicit save step.
     TargetFinderCharDB.targets = ns.AdoptSaved(TargetFinderCharDB.targets)

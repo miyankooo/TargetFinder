@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: Target Finder
-## Notes: One macro targets and marks the NPCs your quests need, plus any NPC you add.
+## Notes: One macro targets the NPCs your quests need, plus any NPC you add, and raid-marks them by row.
 ## Author: miyanko
 ## Version: @project-version@
 ## Category: Quests
@@ -21,11 +21,13 @@ Core\Secrets.lua
 Core\Store.lua
 Core\Macro.lua
 Core\Targets.lua
+Core\Markers.lua
 Core\Quest.lua
 Core\UnitMenu.lua
 
 UI\Suggestions.lua
 UI\Panel.lua
+UI\FinderGlow.lua
 UI\MinimapButton.lua
 
 TargetFinder.lua

@@ -436,7 +436,7 @@ local function prebuildNameIndex()
     if db then guarded(buildNpcNameIndex, db) end
 end
 
--- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login and in a new zone, swaps them for the closest NPCs the quests need; a light one, after a quest update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Quest NPCs off only the drop runs, for NPCs added from a quest suggestion.
+-- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login and in a new zone, swaps them for the closest NPCs the quests need; a light one, after a quest update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Auto Apply Quest NPCs off only the drop runs, for NPCs added from a quest suggestion.
 local function syncQuestNpcs(full)
     if not ns.QuestieReady() then return end
     local following = TargetFinderCharDB.questNpcs
@@ -495,7 +495,7 @@ function ns.WatchQuestie()
     if type(api.RegisterForQuestUpdates) == "function" then api.RegisterForQuestUpdates(onQuestUpdate) end
 end
 
--- The Quest NPCs box. On fills the list at once, off takes every quest entry away. Typed names stay either way.
+-- The Auto Apply Quest NPCs box. On fills the list at once, off takes every quest entry away. Typed names stay either way.
 function ns.SetQuestNpcs(on)
     TargetFinderCharDB.questNpcs = on
     if on then
@@ -505,7 +505,7 @@ function ns.SetQuestNpcs(on)
     end
 end
 
--- A quest picked from the suggestions takes the quest rows first. With Quest NPCs on the closest other quest NPCs fill what is left.
+-- A quest picked from the suggestions takes the quest rows first. With Auto Apply Quest NPCs on the closest other quest NPCs fill what is left.
 function ns.TrackQuest(questId)
     local picks = ns.QuestNpcs(questId)
     if #picks == 0 then

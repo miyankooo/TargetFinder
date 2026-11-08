@@ -89,6 +89,11 @@ function CreateFrame(kind, name, parent, template)
     f.SetHeight = function(self, h) self.height = h; return self end
     f.SetFrameStrata = function(self, strata) self.strata = strata; return self end
     f.SetScript = function(self, ev, fn) self.scripts[ev] = fn; return self end
+    f.HookScript = function(self, ev, fn)
+        local before = self.scripts[ev]
+        self.scripts[ev] = function(...) if before then before(...) end; fn(...) end
+        return self
+    end
     f.GetScript = function(self, ev) return self.scripts[ev] end
     f.RegisterEvent = function(self, ev)
         self.events[ev] = true
@@ -156,9 +161,14 @@ function CreateFrame(kind, name, parent, template)
     if template == "CheckboxWithLabelTemplate" then
         f.Text = f:CreateFontString()
     end
+    -- Blizzard's proc glow carries its start animation
+    if template == "ActionButtonSpellAlertTemplate" then
+        f.ProcStartAnim = { Play = function(a) a.playing = true end, Stop = function(a) a.playing = false end }
+    end
     -- ButtonFrameTemplate hands its content well out as .Inset, with PortraitFrameMixin's title and portrait setters
     if template == "ButtonFrameTemplate" then
         f.Inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
+        f.Inset.Bg = f.Inset:CreateTexture()
         f.PortraitContainer = CreateFrame("Frame", nil, f)
         f.PortraitContainer.portrait = f.PortraitContainer:CreateTexture()
         f.GetPortrait = function(self) return self.PortraitContainer.portrait end
@@ -190,8 +200,24 @@ function IsInRaid() return W.group == "raid" end
 function UnitIsGroupLeader() return W.leader == true end
 function UnitIsGroupAssistant() return W.assistant == true end
 
--- only counted: the addon must never call it
-function SetRaidTarget() W.markCalls = W.markCalls + 1 end
+-- unit token -> marker index; markerSecret makes the read come back as a secret
+W.markers = {}
+function SetRaidTarget(unit, index)
+    W.markCalls = W.markCalls + 1
+    W.lastMark = { unit = unit, index = index }
+    W.markers[unit] = index
+end
+function GetRaidTargetIndex(unit)
+    if W.markerSecret then return { __secret = true } end
+    return W.markers[unit]
+end
+function UnitCanAttack(_, u) local x = W.units[u]; return x ~= nil and x.hostile == true end
+-- W.restricted holds the active restriction types
+W.restricted = {}
+Enum = { AddOnRestrictionType = { Combat = 0, Encounter = 1, ChallengeMode = 2, PvPMatch = 3, Map = 4, Chat = 5 } }
+C_RestrictedActions = { IsAddOnRestrictionActive = function(kind) return W.restricted[kind] == true end }
+RAID_TARGET_1, RAID_TARGET_2, RAID_TARGET_3, RAID_TARGET_4 = "Star", "Circle", "Diamond", "Triangle"
+RAID_TARGET_5, RAID_TARGET_6, RAID_TARGET_7, RAID_TARGET_8 = "Moon", "Square", "Cross", "Skull"
 
 function InCombatLockdown() return W.inCombat == true end
 
@@ -209,13 +235,35 @@ function CreateMacro(n, icon, body, perCharacter)
     W.macros[n] = { icon = icon, body = body, perCharacter = perCharacter }
     return GetMacroIndexByName(n)
 end
--- the macro book, reduced to the tab and the selection the addon sets
+-- the macro book, reduced to the tab, the selection, the large icon and the hooks the addon sets
 function ShowMacroFrame()
-    MacroFrame = MacroFrame or {
-        ChangeTab = function(self, tab) self.tab = tab end,
-        SelectMacro = function(self, index) self.selected = index end,
-    }
+    if not MacroFrame then
+        MacroFrame = {
+            hooks = {},
+            ChangeTab = function(self, tab) self.tab = tab end,
+            SelectMacro = function(self, index) self.selected = index end,
+            GetSelectedIndex = function(self) return self.selected end,
+            GetMacroDataIndex = function(self, index) return (self.tab == 2 and 120 or 0) + index end,
+            IsShown = function(self) return self.shown == true end,
+            HookScript = function(self, script, fn) self.hooks[script] = fn end,
+            SelectedMacroButton = CreateFrame("CheckButton"),
+        }
+    end
     MacroFrame.shown = true
+end
+function HideMacroFrame()
+    MacroFrame.shown = false
+    if MacroFrame.hooks.OnHide then MacroFrame.hooks.OnHide(MacroFrame) end
+end
+function GetMacroInfo(index)
+    for i, name in ipairs(W.macroOrder) do
+        if (W.macros[name].perCharacter and 120 + i or i) == index then return name end
+    end
+end
+-- the post-hook runs after the original, like the client's
+function hooksecurefunc(t, key, fn)
+    local original = t[key]
+    t[key] = function(...) local r = original(...); fn(...); return r end
 end
 function EditMacro(i, n, icon, body) W.macros[n].icon, W.macros[n].body = icon, body end
 function GetActionInfo(slot) local a = W.actions[slot]; if a then return a.kind, a.id end end
@@ -301,6 +349,7 @@ end
 GameTooltip_SetTitle = function(_, text) W.tooltip = { "title:" .. tostring(text) } end
 GameTooltip_AddNormalLine = tooltipLine("normal")
 GameTooltip_AddInstructionLine = tooltipLine("instruction")
+GameTooltip_AddHighlightLine = tooltipLine("highlight")
 GameTooltip_AddDisabledLine = tooltipLine("disabled")
 GameTooltip_AddErrorLine = tooltipLine("error")
 

@@ -12,14 +12,19 @@ local PANEL_WIDTH = 400
 -- Editable rows sit one gap apart, so the 20px edit boxes never touch.
 local ROW_PITCH = UI.Size.row + UI.Space.gap
 
--- The attic names the next step: place FIND, then press it.
-local HELP_PLACE = "Drag the icon to an action bar to use FIND."
+-- The attic names the next step: add a name so Target Finder creates FIND, place it, then press it.
+local HELP_ADD = "Add an NPC below to create your FIND macro."
+local HELP_PLACE = "Your FIND macro is ready. Drag the icon to a bar."
 local HELP_PRESS = "Press FIND to target the first NPC in range."
 
-local FIND_HELP = "Targets the first NPC on this list that is in range and marks it with a skull. Drag it to an action bar."
+local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
 
-local QUEST_LABEL = "Quest NPCs"
-local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your quests that are closest to you. They leave once done. Names you typed stay."
+local QUEST_LABEL = "Auto Apply Quest NPCs"
+local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your quests that are closest to you, and keeps them up to date as you quest and change zones. They leave once done. Names you typed stay."
+
+local MARKER_LABEL = "Apply Raid Markers"
+local MARKER_HELP = "When you target an NPC from the list, it gets the raid marker of its row."
+local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
 
 -- MagicButton_OnLoad's inset for a bar control in the bottom-left corner (Mainline/SharedUIPanelTemplates.lua:34). The checkbox centres on the 22px bar button slot there.
 local BAR_INSET = 4
@@ -154,7 +159,7 @@ local function fillQuestTooltip(tooltip)
     end
 end
 
--- The bar's one control sits where a bar button would start.
+-- The bar's first control sits where a bar button would start.
 local function buildQuestBox(frame)
     local box = UI.CreateCheckbox(frame, QUEST_LABEL)
     box:SetPoint("LEFT", frame, "BOTTOMLEFT", BAR_INSET, BAR_INSET + UI.Native.buttonHeight / 2)
@@ -166,6 +171,29 @@ local function buildQuestBox(frame)
     frame.questBox = box
 end
 
+-- One line per row, with Blizzard's own marker names (RAID_TARGET_1 to 8).
+local function fillMarkerTooltip(tooltip)
+    GameTooltip_SetTitle(tooltip, MARKER_LABEL)
+    GameTooltip_AddNormalLine(tooltip, MARKER_HELP)
+    for slot, marker in ipairs(ns.SLOT_MARKERS) do
+        GameTooltip_AddHighlightLine(tooltip, "Row " .. slot .. ": " .. _G["RAID_TARGET_" .. marker])
+    end
+    if ns.CanMark() then
+        GameTooltip_AddNormalLine(tooltip, MARKER_RIGHTS)
+    else
+        GameTooltip_AddErrorLine(tooltip, MARKER_RIGHTS)
+    end
+end
+
+-- The second bar control follows the first after one padding step.
+local function buildMarkerBox(frame)
+    local box = UI.CreateCheckbox(frame, MARKER_LABEL)
+    box:SetPoint("LEFT", frame.questBox.Text, "RIGHT", UI.Space.padding, 0)
+    box:SetScript("OnClick", function(self) TargetFinderCharDB.raidMarkers = self:GetChecked() end)
+    UI.AttachTooltip(box, fillMarkerTooltip)
+    frame.markerBox = box
+end
+
 -- The template's attic and button bar offsets (60 and 26) put the padded rows off the grid, so the height snaps up and the extra 2px fall into the inset's bottom padding.
 local function panelHeight()
     local contentHeight = UI.Space.padding * 2 + MAX_TARGETS * ROW_PITCH - UI.Space.gap
@@ -173,7 +201,13 @@ local function panelHeight()
 end
 
 local function updateHelp()
-    panel.help:SetText(ns.FinderOnBar() and HELP_PRESS or HELP_PLACE)
+    local text = HELP_ADD
+    if ns.FinderOnBar() then
+        text = HELP_PRESS
+    elseif ns.FinderExists() then
+        text = HELP_PLACE
+    end
+    panel.help:SetText(text)
 end
 
 local function buildPanel()
@@ -203,6 +237,7 @@ local function buildPanel()
     end
 
     buildQuestBox(panel)
+    buildMarkerBox(panel)
     return panel
 end
 
@@ -215,6 +250,7 @@ function ns.RefreshPanel()
     panel.questBox:SetChecked(TargetFinderCharDB.questNpcs)
     panel.questBox:SetEnabled(ready)
     panel.questBox.Text:SetFontObject(ready and UI.Font.body or UI.Font.muted)
+    panel.markerBox:SetChecked(TargetFinderCharDB.raidMarkers)
 
     local icons = ns.QuestieKindIcons()
     for slot = 1, MAX_TARGETS do

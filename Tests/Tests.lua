@@ -27,6 +27,8 @@ TargetFinderDB = nil; TargetFinderCharDB = nil
 local boot
 for f in pairs(_G.__frames) do if f.events["ADDON_LOADED"] then boot = f end end
 boot.scripts.OnEvent(boot, "ADDON_LOADED", "TargetFinder")
+-- the first-FIND introduction has its own section near the end
+TargetFinderCharDB.finderIntroduced = true
 
 section("toc metadata")
 local toc = {}
@@ -55,7 +57,7 @@ for raw in io.lines(here .. "../TargetFinder.toc") do
 end
 check("UI files live in UI/", tocFiles["UI\\Panel.lua"] and tocFiles["UI\\Suggestions.lua"] and tocFiles["UI\\MinimapButton.lua"])
 check("no UI file left in Core/", not (tocFiles["Core\\Panel.lua"] or tocFiles["Core\\Suggestions.lua"] or tocFiles["Core\\MinimapButton.lua"]))
-check("no addon-side marker module", not tocFiles["Core\\Markers.lua"])
+check("the marker module and the glow load", tocFiles["Core\\Markers.lua"] and tocFiles["UI\\FinderGlow.lua"])
 local dbIconAt
 for i, line in ipairs(tocOrder) do
     if line == "Libs\\LibDBIcon-1.0\\LibDBIcon-1.0.lua" then dbIconAt = i end
@@ -71,7 +73,8 @@ check("no compartment globals left", TargetFinder_OnClick == nil and TargetFinde
 section("boot and saved variables")
 check("minimap defaults created", TargetFinderDB.minimap.minimapPos == 215)
 check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
-check("Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
+check("Auto Apply Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
+check("Apply Raid Markers starts on", TargetFinderCharDB.raidMarkers == true)
 check("unit menus registered", W.menuHooks["MENU_UNIT_TARGET"] ~= nil)
 check("group, chat and friends menus left alone", W.menuHooks["MENU_UNIT_PARTY"] == nil and W.menuHooks["MENU_UNIT_RAID_PLAYER"] == nil
       and W.menuHooks["MENU_UNIT_RAID"] == nil and W.menuHooks["MENU_UNIT_FRIEND"] == nil and W.menuHooks["MENU_UNIT_PLAYER"] == nil)
@@ -98,8 +101,8 @@ ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta"); ns.targets[3] = ns.MakeEntry("Gamma")
 ns.WriteFinderMacro()
 local body = W.macros["FIND"].body
-local TAIL = "\n/targetlasttarget [dead]\n/tm [harm,nodead] !8"
-check("exact names reversed so slot 1 wins last, then the corpse guard and the skull",
+local TAIL = "\n/targetlasttarget [dead]"
+check("exact names reversed so slot 1 wins last, then the corpse guard, and no marker line",
       body == "/targetexact Gamma\n/targetexact Beta\n/targetexact Alpha" .. TAIL, body:gsub("\n","|"))
 check("FIND is a character macro", W.macros["FIND"].perCharacter == true)
 check("FIND uses the icon's file ID", W.macros["FIND"].icon == 132212, W.macros["FIND"].icon)
@@ -114,7 +117,7 @@ local b = W.macros["FIND"].body
 check("body within cap", #b <= 255, #b)
 check("slot 1 survived truncation", b:match("Name1") ~= nil)
 check("slot 8 dropped first", b:match("Name8") == nil)
-check("the corpse guard and the skull always stay", b:sub(-#TAIL) == TAIL, b:sub(-#TAIL))
+check("the corpse guard always stays", b:sub(-#TAIL) == TAIL, b:sub(-#TAIL))
 
 section("macro cap is reported, not silent")
 ns.WipeTargets()
@@ -125,46 +128,68 @@ ns.WriteFinderMacro()
 check("cap failure announced", chatHas("Delete one in the macro book"), table.concat(W.chat, " / "))
 W.macroCap = 120
 
-section("the skull line follows the group role")
-local macroEvents
-for f in pairs(_G.__frames) do if f.events["GROUP_ROSTER_UPDATE"] then macroEvents = f end end
-check("group changes are watched", macroEvents ~= nil and macroEvents.events["PARTY_LEADER_CHANGED"] == true)
-local function groupEvent(event) macroEvents.scripts.OnEvent(macroEvents, event or "GROUP_ROSTER_UPDATE") end
-local function marks() return W.macros["FIND"].body:match("/tm %[harm,nodead%] !8$") ~= nil end
+section("Apply Raid Markers marks each row with its own marker")
+local markerEvents
+for f in pairs(_G.__frames) do if f.events["PLAYER_TARGET_CHANGED"] then markerEvents = f end end
+check("target changes are watched", markerEvents ~= nil)
+local function retarget(unit)
+    W.units = { target = unit }
+    W.markers = {}
+    W.lastMark = nil
+    markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
+    return W.lastMark and W.lastMark.index
+end
 ns.WipeTargets()
-ns.targets[1] = ns.MakeEntry("Kobold")
-ns.WriteFinderMacro()
-check("solo, FIND marks", marks())
+for i = 1, 8 do ns.targets[i] = ns.MakeEntry("Mob" .. i) end
+local expected = { 8, 7, 6, 5, 4, 3, 2, 1 }
+local allRight = true
+for i = 1, 8 do
+    if retarget({ name = "Mob" .. i, hostile = true }) ~= expected[i] then allRight = false end
+end
+check("row 1 skull, row 2 cross, down to row 8 star", allRight)
+check("it marks the target", W.lastMark.unit == "target")
+check("an unlisted NPC gets nothing", retarget({ name = "Stranger", hostile = true }) == nil)
+check("a friendly NPC gets nothing, like [harm]", retarget({ name = "Mob1" }) == nil)
+check("a corpse gets nothing, like [nodead]", retarget({ name = "Mob1", hostile = true, dead = true }) == nil)
+check("a player of a listed name gets nothing", retarget({ name = "Mob1", hostile = true, player = true }) == nil)
+check("a hidden name gets nothing", retarget({ name = "Mob1", hostile = true, secret = true }) == nil)
+W.units = { target = { name = "Mob2", hostile = true } }
+W.markers = { target = 7 }
+W.lastMark = nil
+markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
+check("a marker already in place stays, so it never toggles off", W.lastMark == nil)
+W.markers = { target = 3 }
+markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
+check("another marker is replaced by the row's", W.lastMark and W.lastMark.index == 7)
+W.markerSecret, W.secretsOn = true, true
+check("an unreadable current marker skips the mark", retarget({ name = "Mob1", hostile = true }) == nil)
+W.markerSecret, W.secretsOn = false, false
+W.restricted[0] = true
+check("an active addon restriction skips the mark", retarget({ name = "Mob1", hostile = true }) == nil)
+W.restricted = {}
+W.restricted[5] = true
+check("any restriction type skips it", retarget({ name = "Mob1", hostile = true }) == nil)
+W.restricted = {}
 W.group = "party"
-groupEvent()
-check("a party member who does not lead gets no skull line", not marks(), W.macros["FIND"].body)
+check("a party member who does not lead marks nothing", retarget({ name = "Mob1", hostile = true }) == nil)
 W.leader = true
-groupEvent("PARTY_LEADER_CHANGED")
-check("the party leader marks", marks())
+check("the party leader marks", retarget({ name = "Mob1", hostile = true }) == 8)
 W.group, W.leader = "raid", false
-groupEvent()
-check("a plain raid member gets no skull line", not marks())
+check("a plain raid member marks nothing", retarget({ name = "Mob1", hostile = true }) == nil)
 W.assistant = true
-groupEvent()
-check("a raid assistant marks", marks())
-W.macros["FIND"].body = "sentinel"
-groupEvent()
-check("a roster change that keeps the role leaves FIND alone", W.macros["FIND"].body == "sentinel")
-ns.WriteFinderMacro()
-W.units = { player = { name = "Me", secret = true } }
+check("a raid assistant marks", retarget({ name = "Mob1", hostile = true }) == 8)
+W.units = { player = { name = "Me", secret = true }, target = { name = "Mob1", hostile = true } }
 W.group, W.assistant, W.leader = "party", false, true
-groupEvent()
-check("a hidden leader answer counts as no", not marks())
-W.units = {}
+W.lastMark = nil
+markerEvents.scripts.OnEvent(markerEvents, "PLAYER_TARGET_CHANGED")
+check("a hidden leader answer counts as no", W.lastMark == nil)
 W.group, W.leader = nil, false
-groupEvent()
-check("back to solo, FIND marks again", marks())
-W.macroOrder = {}; W.macros = {}
-W.group = "party"
-groupEvent()
-check("a group change never creates FIND", W.macros["FIND"] == nil)
-W.group = nil
-groupEvent()
+TargetFinderCharDB.raidMarkers = false
+check("unticked, nothing is marked", retarget({ name = "Mob1", hostile = true }) == nil)
+TargetFinderCharDB.raidMarkers = true
+check("solo, it marks", retarget({ name = "Mob1", hostile = true }) == 8)
+W.units = {}
+W.markCalls = 0
 
 section("secret identity guard")
 W.units = { target = { name = "Someone", player = true, friend = true, party = true, secret = true } }
@@ -212,7 +237,7 @@ check("stored the NPC name", ns.targets[1] and ns.targets[1].name == "Mangeclaw"
 check("did NOT store 'Raid Target Icon'", ns.targets[1] and ns.targets[1].name ~= "Raid Target Icon")
 check("a player's Track creates FIND", W.macros["FIND"] ~= nil)
 check("tracking never calls SetRaidTarget", W.markCalls == 0, W.markCalls)
-check("one chat line with the bar reminder", #W.chat == 1 and chatHas("^.*Tracking Mangeclaw%. Drag FIND from your character macros %(/m%) to an action bar%.$"),
+check("one chat line with the bar reminder", #W.chat == 1 and chatHas("^.*Tracking Mangeclaw%. Target Finder created your FIND macro%. Drag it from the macro book %(/m%) to an action bar%.$"),
       table.concat(W.chat, " / "))
 check("Track opens the macro book", MacroFrame and MacroFrame.shown == true)
 check("on the character tab with FIND selected", MacroFrame and MacroFrame.tab == 2 and MacroFrame.selected == GetMacroIndexByName("FIND") - 120,
@@ -632,13 +657,13 @@ check("a quest row shows Questie's icon for its kind", row1.icon.texturePath == 
 check("a typed row shows no icon", panel.rows[2].icon.shown == false)
 check("an empty row shows no icon", panel.rows[3].icon.shown == false)
 
-section("the Quest NPCs box")
+section("the Auto Apply Quest NPCs box")
 local box = panel.questBox
 local boxAnchor = box.points[1]
 check("a native checkbox", box.template == "CheckboxWithLabelTemplate", box.template)
 check("it sits where a bar button would start", boxAnchor.point == "LEFT" and boxAnchor.rel == panel and boxAnchor.relPoint == "BOTTOMLEFT"
       and boxAnchor.x == 4 and boxAnchor.y == 4 + UI.Native.buttonHeight / 2, tostring(boxAnchor.x) .. "," .. tostring(boxAnchor.y))
-check("it is labelled", box.Text.text == "Quest NPCs", box.Text.text)
+check("it is labelled", box.Text.text == "Auto Apply Quest NPCs", box.Text.text)
 check("it mirrors the setting", box.checked == true)
 check("it is on while Questie is ready", box.enabled == true and box.Text.fontObject == UI.Font.body)
 ns.WipeTargets()
@@ -655,7 +680,7 @@ check("unticking clears quest NPCs and keeps typed names", questEntries() == 0 a
 box:SetChecked(true)
 box.scripts.OnClick(box)
 box.scripts.OnEnter(box)
-check("the tooltip uses Blizzard's title helper", W.tooltip[1] == "title:Quest NPCs", W.tooltip[1])
+check("the tooltip uses Blizzard's title helper", W.tooltip[1] == "title:Auto Apply Quest NPCs", W.tooltip[1])
 _G.Questie.API.isReady = false
 ns.RefreshPanel()
 check("off and greyed while Questie loads", box.enabled == false and box.Text.fontObject == UI.Font.muted)
@@ -666,6 +691,30 @@ W.readyCallbacks[1]()
 RunTimers()
 check("Questie's ready callback turns it on", box.enabled == true)
 
+section("the Apply Raid Markers box")
+local markerBox = panel.markerBox
+check("a native checkbox", markerBox and markerBox.template == "CheckboxWithLabelTemplate")
+check("it is labelled", markerBox.Text.text == "Apply Raid Markers", markerBox.Text.text)
+local markerAnchor = markerBox.points[1]
+check("it follows the quest box's label one padding step on", markerAnchor.point == "LEFT" and markerAnchor.rel == box.Text
+      and markerAnchor.relPoint == "RIGHT" and markerAnchor.x == UI.Space.padding and markerAnchor.y == 0)
+ns.RefreshPanel()
+check("it mirrors the setting", markerBox.checked == true)
+markerBox:SetChecked(false)
+markerBox.scripts.OnClick(markerBox)
+check("unticking saves the choice", TargetFinderCharDB.raidMarkers == false)
+markerBox:SetChecked(true)
+markerBox.scripts.OnClick(markerBox)
+check("ticking saves it again", TargetFinderCharDB.raidMarkers == true)
+markerBox.scripts.OnEnter(markerBox)
+check("the tooltip names each row's marker", W.tooltip[1] == "title:Apply Raid Markers" and W.tooltip[3] == "highlight:Row 1: Skull"
+      and W.tooltip[10] == "highlight:Row 8: Star", table.concat(W.tooltip, " / "))
+check("solo, the rights line is plain", W.tooltip[11] == "normal:In a group, markers need leader or assistant rights.", W.tooltip[11])
+W.group = "party"
+markerBox.scripts.OnEnter(markerBox)
+check("without rights, it is an error line", W.tooltip[11] == "error:In a group, markers need leader or assistant rights.", W.tooltip[11])
+W.group = nil
+
 section("FIND comes from the window icon")
 local dragIcon
 for _, f in ipairs(W.created) do
@@ -675,9 +724,13 @@ check("a button sits on the portrait", dragIcon ~= nil)
 check("it drags with the left button", dragIcon and dragIcon.scripts.OnDragStart ~= nil)
 W.macroOrder = {}; W.macros = {}; W.cursorMacro = nil; W.actions = {}
 ns.RefreshPanel()
-check("help says to place FIND", panel.help.text == "Drag the icon to an action bar to use FIND.", panel.help.text)
+check("without FIND, help says adding a name creates it", panel.help.text == "Add an NPC below to create your FIND macro.", panel.help.text)
+TargetFinderCharDB.finderIntroduced = nil
 dragIcon.scripts.OnDragStart(dragIcon)
 check("the first drag creates FIND", W.macros["FIND"] ~= nil)
+check("a FIND created by dragging needs no introduction", TargetFinderCharDB.finderIntroduced == true and (W.timers == nil or #W.timers == 0))
+ns.RefreshPanel()
+check("once FIND exists, help says to place it", panel.help.text == "Your FIND macro is ready. Drag the icon to a bar.", panel.help.text)
 check("and puts it on the cursor", W.cursorMacro ~= nil and W.cursorMacro == GetMacroIndexByName("FIND"), W.cursorMacro)
 W.actions[5] = { kind = "macro", id = GetMacroIndexByName("FIND") }
 panel.scripts.OnEvent(panel, "ACTIONBAR_SLOT_CHANGED")
@@ -889,9 +942,52 @@ local shownBefore = panel.shown
 SlashCmdList.TARGETFINDER("assist Buddy")
 check("/tf assist is gone and toggles the window", panel.shown ~= shownBefore and W.macros["ASSIST"] == nil and ns.SlotForName("Buddy") == nil)
 
-section("markers only ever go on through /tm")
-check("the addon never called SetRaidTarget", W.markCalls == 0, W.markCalls)
-check("target changes are not watched", boot.events["PLAYER_TARGET_CHANGED"] == nil)
+section("the first FIND opens the macro book with its icon glowing")
+W.macroOrder = {}; W.macros = {}; W.actions = {}; W.timers = {}
+MacroFrame.shown, MacroFrame.tab, MacroFrame.selected = false, nil, nil
+TargetFinderCharDB.finderIntroduced = nil
+TargetFinderDB.finderIntroduced = nil
+ns.WipeTargets()
+ns.SyncQuestEntries({ { name = "Quest Wolf", kind = ns.KIND_KILL } })
+check("a quest fill creates FIND", W.macros["FIND"] ~= nil)
+check("the introduction waits a frame", MacroFrame.shown == false)
+W.chat = {}
+RunTimers()
+check("the macro book opens on FIND", MacroFrame and MacroFrame.shown == true and MacroFrame.tab == 2
+      and MacroFrame.selected == GetMacroIndexByName("FIND") - 120)
+local glow
+for _, f in ipairs(W.created) do
+    if f.template == "ActionButtonSpellAlertTemplate" then glow = f end
+end
+check("Blizzard's proc glow sits on the large macro icon", glow and glow.parent == MacroFrame.SelectedMacroButton)
+check("it is scaled like an action button's", glow and glow.width == 22 * 1.4 and glow.points[1].point == "CENTER")
+check("it shows and plays", glow and glow.shown == true and glow.ProcStartAnim.playing == true)
+check("the account's first FIND adds at most one chat line", #W.chat <= 1, table.concat(W.chat, " / "))
+check("both flags are set", TargetFinderCharDB.finderIntroduced == true and TargetFinderDB.finderIntroduced == true)
+table.insert(W.macroOrder, 1, "Other")
+W.macros["Other"] = { perCharacter = true }
+MacroFrame:SelectMacro(1)
+check("selecting another macro hides it", glow.shown == false)
+MacroFrame:SelectMacro(GetMacroIndexByName("FIND") - 120)
+check("selecting FIND again brings it back", glow.shown == true and glow.ProcStartAnim.playing == true)
+W.actions[3] = { kind = "macro", id = GetMacroIndexByName("FIND") }
+glow.scripts.OnEvent(glow, "ACTIONBAR_SLOT_CHANGED")
+check("FIND on a bar ends it", glow.shown == false and glow.events["ACTIONBAR_SLOT_CHANGED"] == nil)
+MacroFrame:SelectMacro(GetMacroIndexByName("FIND") - 120)
+check("and it stays off", glow.shown == false)
+W.actions = {}
+ns.ShowFinder()
+check("Track or /tf add brings it back while FIND is on no bar", glow.shown == true)
+HideMacroFrame()
+check("closing the macro book ends it", glow.shown == false and glow.events["ACTIONBAR_SLOT_CHANGED"] == nil)
+W.macroOrder = {}; W.macros = {}
+MacroFrame.shown = false
+ns.SyncQuestEntries({ { name = "Quest Boar", kind = ns.KIND_KILL } })
+RunTimers()
+check("a character is introduced once", MacroFrame.shown == false)
+
+section("markers never come from tracking or the macro")
+check("no list change called SetRaidTarget", W.markCalls == 0, W.markCalls)
 
 io.write(("\n%d passed, %d failed\n"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
