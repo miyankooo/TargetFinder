@@ -50,10 +50,10 @@ function ns.SetupMinimapButton()
     ns.SetMinimapShown = CreateLauncher(ns.ADDON_ICON, ns.db.minimap, onLauncherClick, fillLauncherTooltip)
 end
 
-local HELP = "Type /tf for the window, /tf add with a name or a target to track it, /tf refresh to update the quest NPCs, "
-    .. "/tf minimap to show or hide the minimap button, /tf intro to see the welcome line and the tip again, or /tf help for this list."
+local HELP = "Type /tf to open the window, /tf add with a name or your target to track it, /tf refresh to update the quest NPCs, "
+    .. "/tf intro to see the welcome line and the tip again, /tf minimap to show or hide the minimap button, or /tf help for this list."
 
--- One long command and one short alias. /tf add takes a name, or the current target's when none is typed. The bare command opens the window; a word it does not know opens nothing.
+-- One long command and one short alias. The bare command opens the window; help, intro and minimap are the shared words, and any other word prints the hint. /tf add takes a name, or the current target's when none is typed.
 SLASH_TARGETFINDER1, SLASH_TARGETFINDER2 = "/targetfinder", "/tf"
 SlashCmdList.TARGETFINDER = function(message)
     local command, rest = (ns.Trim(message) or ""):match("^(%S*)%s*(.-)$")
@@ -69,15 +69,13 @@ SlashCmdList.TARGETFINDER = function(message)
         end
     elseif command == "refresh" then
         ns.RefreshQuestNpcs()
-    elseif command == "minimap" then
-        -- Only the minimap button hides; the addon menu entry stays as the way back.
-        local show = ns.db.minimap.hide == true
-        ns.SetMinimapShown(show)
-        ns.Print(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
-    elseif command == "intro" then
-        ns.ReplayIntro()
     elseif command == "help" or command == "?" then
         ns.Print(HELP)
+    elseif command == "intro" then
+        ns.ReplayIntro()
+    elseif command == "minimap" then
+        -- Only the minimap button hides; the addon menu entry stays as the way back.
+        ns.SetMinimapShown(ns.db.minimap.hide)
     else
         ns.Print("Unknown command. Type /tf help for the list.")
     end

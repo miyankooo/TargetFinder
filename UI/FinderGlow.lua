@@ -18,7 +18,7 @@ local function CreateProcGlow(button)
 end
 
 -- The help tip is an own HelpTipTemplate frame, never HelpTip:Show, which takes a frame from Blizzard's shared pool and taints the help tips Blizzard shows later. Closing it or placing FIND marks it seen for the account, and /tf intro clears that.
-local TIP_TEXT = "Drag FIND, the macro Target Finder created for you, to an action bar."
+local TIP_TEXT = "Drag FIND to an action bar to target the names on your Target Finder list."
 
 local glow, tip
 local active = false

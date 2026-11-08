@@ -24,10 +24,13 @@ end
 
 -- boot the addon the way the client does; from here on every chat line is kept
 W.allChat = {}
+W.chat = {}
 TargetFinderDB = nil; TargetFinderCharDB = nil
 local boot
 for f in pairs(_G.__frames) do if f.events["ADDON_LOADED"] then boot = f end end
 boot.scripts.OnEvent(boot, "ADDON_LOADED", "TargetFinder")
+local firstLoadChat = #W.chat
+local firstLoadFlag = ns.firstRun
 -- the first-FIND introduction has its own section near the end
 TargetFinderCharDB.finderIntroduced = true
 
@@ -87,6 +90,9 @@ end
 check("no compartment globals left", TargetFinder_OnClick == nil and TargetFinder_OnEnter == nil and TargetFinder_OnLeave == nil)
 
 section("boot and saved variables")
+check("the first load prints nothing", firstLoadChat == 0, firstLoadChat)
+check("an absent account table marks the first run", firstLoadFlag == true)
+check("the welcome line waits for login", #W.loginCallbacks == 1, #W.loginCallbacks)
 check("minimap defaults created", TargetFinderDB.minimap.minimapPos == 215)
 check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
 check("Auto Apply Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
@@ -380,24 +386,39 @@ local loadingOk, loadingErr = pcall(ns.SetQuestNpcs, true)
 check("Quest NPCs waits quietly while Questie loads", loadingOk and targetCount() == 0 and #W.chat == 0, loadingErr)
 check("no suggestions while loading", #ns.FindSuggestions("kob") == 0)
 
+-- PLAYER_LOGIN reaches the bootstrap frame and everything EventUtil.ContinueOnPlayerLogin collected
 local login
 for f in pairs(_G.__frames) do if f.events["PLAYER_LOGIN"] then login = f end end
+local function LogIn()
+    login.scripts.OnEvent(login, "PLAYER_LOGIN")
+    for _, callback in ipairs(W.loginCallbacks) do callback() end
+end
+local WELCOME = NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]") .. ": One FIND macro targets the NPCs your quests need, "
+    .. "plus any NPC or player you add. Open the " .. NORMAL_FONT_COLOR:WrapTextInColorCode("|Haddon:TargetFinder|h[Target Finder]|h")
+    .. " or type /tf to add your first name, or right-click a portrait and pick Track."
 W.macroOrder = {}; W.macros = {}
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Saved")
 W.chat = {}
-login.scripts.OnEvent(login, "PLAYER_LOGIN")
+LogIn()
 check("the account's first login prints one welcome line", #W.chat == 1, table.concat(W.chat, " / "))
-check("it says what the addon does and names the window, the menu and /tf", chatHas("One FIND macro targets the NPCs your quests need")
-      and chatHas("|Haddon:TargetFinder|h%[Target Finder%]|h") and chatHas("right%-click a portrait and pick Track")
-      and chatHas("Type /tf help for every command%.$"), W.chat[1])
+check("it says what the addon does, links the window, names /tf and the menu", W.chat[1] == WELCOME, W.chat[1])
 check("login registers for Questie's ready callback", #W.readyCallbacks == 1 and type(W.readyCallbacks[1]) == "function")
 check("login registers for Questie's quest updates", #W.questCallbacks == 1)
 check("login never creates FIND", W.macros["FIND"] == nil)
 ns.WriteFinderMacro()
 W.macros["FIND"].body = "edited by hand"
+-- a later session: the saved tables exist at ADDON_LOADED, so nothing marks a first run. The client hands the
+-- character's list back as a fresh table, not the live one.
+local savedDB = TargetFinderDB
+local reloaded = {}
+for slot, entry in pairs(TargetFinderCharDB.targets) do reloaded[slot] = { name = entry.name, quest = entry.quest, kind = entry.kind } end
+TargetFinderCharDB.targets = reloaded
+ns.firstRun = nil
+boot.scripts.OnEvent(boot, "ADDON_LOADED", "TargetFinder")
 W.chat = {}
-login.scripts.OnEvent(login, "PLAYER_LOGIN")
+LogIn()
+check("a later session keeps the account table", TargetFinderDB == savedDB and ns.db == savedDB)
 check("a later login prints nothing", #W.chat == 0, table.concat(W.chat, " / "))
 check("login rewrites an existing FIND", W.macros["FIND"].body == "/targetexact Saved" .. TAIL, W.macros["FIND"].body)
 
@@ -1093,9 +1114,9 @@ check("the bare slash command toggles the panel", panel.shown ~= before)
 W.chat = {}
 SlashCmdList.TARGETFINDER(" Minimap ")
 check("/tf minimap hides the minimap button", TargetFinderDB.minimap.hide == true and W.minimapShown == false)
-check("and says how to bring it back", chatHas("/tf minimap to show it again"), W.chat[1])
 SlashCmdList.TARGETFINDER("minimap")
 check("a second /tf minimap shows it", TargetFinderDB.minimap.hide == false and W.minimapShown == true)
+check("the button itself is the answer, so no chat line", #W.chat == 0, table.concat(W.chat, " / "))
 W.macroOrder = {}; W.macros = {}
 ns.WipeTargets()
 SlashCmdList.TARGETFINDER("add Hogger the Great")
@@ -1117,15 +1138,17 @@ check("an unknown word opens nothing and points to help", panel.shown == shownBe
       and #W.chat == 1 and chatHas("Unknown command%. Type /tf help for the list%.$"), table.concat(W.chat, " / "))
 W.chat = {}
 SlashCmdList.TARGETFINDER("help")
-check("/tf help names every command in one line", #W.chat == 1 and chatHas("/tf add") and chatHas("/tf refresh") and chatHas("/tf minimap")
-      and chatHas("/tf intro") and chatHas("/tf help for this list%.$"), W.chat[1])
+check("/tf help names every command in one line", #W.chat == 1 and W.chat[1] == NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]")
+      .. ": Type /tf to open the window, /tf add with a name or your target to track it, /tf refresh to update the quest NPCs, "
+      .. "/tf intro to see the welcome line and the tip again, /tf minimap to show or hide the minimap button, or /tf help for this list.",
+      W.chat[1])
 W.chat = {}
 SlashCmdList.TARGETFINDER("?")
 check("/tf ? is help too", #W.chat == 1 and chatHas("/tf help for this list"))
 TargetFinderDB.tipSeen = true
 W.chat = {}
 SlashCmdList.TARGETFINDER("intro")
-check("/tf intro prints the welcome line again", #W.chat == 1 and chatHas("One FIND macro targets"), W.chat[1])
+check("/tf intro prints the welcome line again", #W.chat == 1 and W.chat[1] == WELCOME, W.chat[1])
 check("and brings the tip back", TargetFinderDB.tipSeen == nil)
 if panel.shown then ns.TogglePanel() end
 EventRegistry.callbacks.SetItemRef("addon:OtherAddon")
@@ -1171,7 +1194,7 @@ for _, f in ipairs(W.created) do
 end
 check("Blizzard's help tip points at the large icon", tip and tip.shown == true and tip.target == MacroFrame.SelectedMacroButton
       and tip.parent == MacroFrame.SelectedMacroButton)
-check("it says what to do with FIND", tip.info.text == "Drag FIND, the macro Target Finder created for you, to an action bar."
+check("it says what to do with FIND and what it gives", tip.info.text == "Drag FIND to an action bar to target the names on your Target Finder list."
       and tip.info.buttonStyle == HelpTip.ButtonStyle.Close and tip.info.targetPoint == HelpTip.Point.RightEdgeCenter)
 table.insert(W.macroOrder, 1, "Other")
 W.macros["Other"] = { perCharacter = true }

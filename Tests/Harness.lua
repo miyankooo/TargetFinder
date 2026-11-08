@@ -375,8 +375,14 @@ EventRegistry = {
     callbacks = {},
     RegisterCallback = function(self, event, fn, owner) self.callbacks[event] = function(...) fn(owner, ...) end end,
 }
--- Blizzard's help tip: the pieces the addon reads, and a template whose close button acknowledges
-HelpTip = { width = 226, ButtonStyle = { None = 0, Okay = 1, Close = 2 }, Point = { RightEdgeCenter = 8 } }
+-- Blizzard's help tip: the pieces the addon reads, and a template whose close button acknowledges. The shared pool's
+-- entry points raise, because a tip taken from it taints the help tips Blizzard shows later.
+local function sharedPool() error("HelpTip's shared pool used; build an own HelpTipTemplate frame") end
+HelpTip = { width = 226, ButtonStyle = { None = 0, Okay = 1, Close = 2 }, Point = { RightEdgeCenter = 8 },
+    Show = sharedPool, Acknowledge = sharedPool, Hide = sharedPool }
+-- EventUtil.ContinueOnPlayerLogin waits for PLAYER_LOGIN; LogIn() in the suite runs what it collected
+W.loginCallbacks = {}
+EventUtil = { ContinueOnPlayerLogin = function(fn) W.loginCallbacks[#W.loginCallbacks+1] = fn end }
 ADD = "Add"
 CLEAR_ALL = "Clear All"
 PRESS_TAB = "Press Tab"
