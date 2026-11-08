@@ -395,7 +395,7 @@ local function LogIn()
 end
 local WELCOME = NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]") .. ": One FIND macro targets the NPCs your quests need, "
     .. "plus any NPC or player you add. Open the " .. NORMAL_FONT_COLOR:WrapTextInColorCode("|Haddon:TargetFinder|h[Target Finder]|h")
-    .. " or type /tf to add your first name, or right-click a portrait and pick Track."
+    .. " window or type /tf to add your first name, or right-click a portrait and pick Track."
 W.macroOrder = {}; W.macros = {}
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Saved")
