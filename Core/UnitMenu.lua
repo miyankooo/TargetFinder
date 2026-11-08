@@ -45,7 +45,7 @@ local function appendMenu(_, root, context)
         GameTooltip_AddNormalLine(tooltip, help)
     end)
 
-    root:Insert(MenuUtil.CreateTitle(ns.ADDON_NAME), FIRST_ENTRY)
+    root:Insert(MenuUtil.CreateTitle(ns.title), FIRST_ENTRY)
     root:Insert(button, FIRST_ENTRY + 1)
     root:Insert(MenuUtil.CreateDivider(), FIRST_ENTRY + 2)
 end

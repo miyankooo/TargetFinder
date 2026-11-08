@@ -1,16 +1,183 @@
 local _, ns = ...
-local UI = LibStub("LibNativeUI-1.0")
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), which UI.CreateWindow builds. The dialog kit is for small popups, which eight editable rows are not.
+-- Sizes from the design system (wow-forever-dev, ui-components.md): spacing on the 4 px grid, the 24 px row and the 16 px inline icon.
+local TIGHT = 4
+local GAP = 8
+local PADDING = 16
+local ROW = 24
+local ICON = 16
+
+-- InputBoxTemplate draws its left cap 5 px outside the box (Shared/InputBox/InputBoxTemplates.xml:49), so a box is indented by it.
+local EDIT_BOX_CAP = 5
+
+-- Text in a font role: GameFontNormal (heading, gold), GameFontHighlight (body, white), GameFontDisable (muted,
+-- grey), GameFontNormalLarge (title, 16 px, a dialog's subject line only).
+-- The suggestion popup writes its hint with it too, so it lives on ns.
+function ns.CreateText(parent, fontObject, layer)
+    local text = parent:CreateFontString(nil, layer or "ARTWORK")
+    text:SetFontObject(fontObject or GameFontHighlight)
+    text:SetJustifyH("LEFT")
+    return text
+end
+local CreateText = ns.CreateText
+
+-- A GameTooltip owned by the hovered frame, filled with Blizzard's GameTooltip_* line helpers. A frame whose
+-- template already sets OnEnter gets HookScript instead.
+local function AttachTooltip(frame, fill, anchor)
+    frame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
+        fill(GameTooltip, self)
+        GameTooltip:Show()
+    end)
+    frame:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+-- Rounds a length derived from text up to the 4 px grid.
+local function Snap(length)
+    return math.ceil(length / 4) * 4
+end
+
+-- A content button one row (24) tall. Without a width it fits its label the way UIPanelButtonTemplate's FitToText
+-- does (text plus 40, SecureUIPanelTemplates.xml:42), at least 64, rounded up to 8 so neighbours share widths.
+local function CreateButton(parent, label, width)
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    button:SetText(label)
+    width = width or math.max(64, math.ceil((button:GetTextWidth() + 40) / 8) * 8)
+    button:SetSize(width, 24)
+    return button
+end
+
+-- CheckboxWithLabelTemplate: the minimal art Blizzard's Settings use, at the 24 px AddonList gives it
+-- (Blizzard_AddOnList/AddonList.xml:73-74). The label joins the hit rect, so a click on it toggles the box.
+local function CreateCheckbox(parent, label)
+    local checkbox = CreateFrame("CheckButton", nil, parent, "CheckboxWithLabelTemplate")
+    checkbox:SetSize(24, 24)
+    checkbox.Text:SetFontObject(GameFontHighlight)
+    checkbox.Text:ClearAllPoints()
+    checkbox.Text:SetPoint("LEFT", checkbox, "RIGHT", 4, 0)
+    checkbox.Text:SetText(label)
+    checkbox:SetHitRectInsets(0, -(4 + checkbox.Text:GetStringWidth()), 0, 0)
+    return checkbox
+end
+
+-- InputBoxTemplate draws its left cap 5 px outside the box (InputBoxTemplates.xml:49), so the caller indents the
+-- box by 5 to line the art up with the column.
+local function CreateEditBox(parent, width)
+    local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    box:SetSize(width or 160, 20)
+    box:SetAutoFocus(false)
+    box:SetFontObject(GameFontHighlight)
+    return box
+end
+
+-- The close button Blizzard uses for one row of a list, sized to the row.
+local function CreateRemoveButton(parent)
+    local button = CreateFrame("Button", nil, parent, "UIPanelCloseButtonNoScripts")
+    button:SetSize(24, 24)
+    return button
+end
+
+-- The collections panel's ornaments, which a tool window leaves out.
+local BACKGROUND_CORNERS = { "BGCornerTopLeft", "BGCornerTopRight", "BGCornerBottomLeft", "BGCornerBottomRight" }
+
+-- Restores a saved position, or centres the frame.
+local function RestorePosition(frame, position)
+    frame:ClearAllPoints()
+    if position and position.point then
+        frame:SetPoint(position.point, UIParent, position.relPoint or position.point, position.x or 0, position.y or 0)
+    else
+        frame:SetPoint("CENTER")
+    end
+end
+
+-- Windows and dialogs: toplevel, clamped, dragged with the left button, closed by Escape through UISpecialFrames,
+-- never UIPanelWindows, so they never drive Blizzard's panel layout.
+local function MakeMovable(frame, name, strata, position)
+    frame:SetFrameStrata(strata)
+    frame:SetToplevel(true)
+    frame:SetClampedToScreen(true)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        if position then
+            local point, _, relPoint, x, y = self:GetPoint(1)
+            position.point, position.relPoint, position.x, position.y = point, relPoint, x, y
+        end
+    end)
+    RestorePosition(frame, position)
+    frame:Hide()
+    tinsert(UISpecialFrames, name)
+end
+
+-- A tool window on ButtonFrameTemplate: portrait, title, close button, inset, attic and button bar come from the
+-- template. The wardrobe's brown panel (CollectionsBackgroundTemplate, Mainline/SharedCollectionTemplates.xml) takes
+-- the inset's place without its corner ornaments; Inset stays the content parent and draws nothing.
+local function CreateWindow(name, title, icon, width, height, position)
+    local frame = CreateFrame("Frame", name, UIParent, "ButtonFrameTemplate")
+    frame:SetSize(width, height)
+    frame.Inset.Bg:Hide()
+    frame.Inset.NineSlice:Hide()
+    local background = CreateFrame("Frame", nil, frame, "CollectionsBackgroundTemplate")
+    background:ClearAllPoints()
+    background:SetAllPoints(frame.Inset)
+    for _, corner in ipairs(BACKGROUND_CORNERS) do background[corner]:Hide() end
+    frame.Background = background
+    frame:SetTitle(title)
+    frame:SetPortraitToAsset(icon)
+
+    -- The close button goes through HideUIPanel, which refuses insecure callers in combat. UIPanelCloseButton_OnClick
+    -- asks onCloseCallback first, so the window hides itself instead.
+    frame.onCloseCallback = function()
+        frame:Hide()
+        return false
+    end
+
+    MakeMovable(frame, name, "HIGH", position)
+    return frame
+end
+
+-- A help line in the attic, from title left 58 to the rows' right edge, cut rather than wrapped. Two lines sit one
+-- gap either side of the attic's middle: a gold how-to over a white next step.
+local function CreateAtticLine(frame, fontObject, y, rightOffset)
+    local line = CreateText(frame, fontObject)
+    line:SetPoint("LEFT", frame, "TOPLEFT", 58, y)
+    line:SetPoint("RIGHT", frame, "TOPRIGHT", rightOffset, y)
+    line:SetWordWrap(false)
+    return line
+end
+
+-- The portrait as a drag source, the way a spell leaves the spellbook: dragging it puts the addon's action on the
+-- cursor.
+local function CreatePortraitDrag(frame, pickup)
+    local button = CreateFrame("Button", nil, frame.PortraitContainer)
+    button:SetAllPoints(frame:GetPortrait())
+    button:RegisterForDrag("LeftButton")
+    button:SetScript("OnDragStart", pickup)
+    return button
+end
+
+-- Builds the window on first use and flips it after that, so no frame exists until the player asks.
+local function CreateToggle(build)
+    local window
+    return function()
+        window = window or build()
+        window:SetShown(not window:IsShown())
+    end
+end
+
+-- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), which CreateWindow builds. The dialog chrome is for small popups, which eight editable rows are not.
 local PANEL_NAME = "TargetFinderFrame"
 
 -- Wide enough that each line of the attic help fits beside the portrait.
 local PANEL_WIDTH = 400
 
 -- Editable rows sit one gap apart, so the 20px edit boxes never touch.
-local ROW_PITCH = UI.Size.row + UI.Space.gap
+local ROW_PITCH = ROW + GAP
 
 -- The attic's first line says how to fill the list. The second names the next FIND step: the first name creates it, then the player places it, then presses it.
 local HELP_ADD = "Type names below or right-click a portrait to Track."
@@ -30,9 +197,9 @@ local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
 
 -- The template's 26px button bar fits a 22px button, which leaves a 24px checkbox no room. The bar grows to one gap above and below the checkboxes, measured from the frame's bottom border, MagicButton_OnLoad's 4px inset (Mainline/SharedUIPanelTemplates.lua:34). The checkboxes start at the rows' left edge.
 local BAR_BORDER = 4
-local BAR_HEIGHT = BAR_BORDER + UI.Space.gap + UI.Size.row + UI.Space.gap
-local BAR_LEFT = PANEL_INSET_LEFT_OFFSET + UI.Space.padding
-local BAR_MIDDLE = BAR_BORDER + UI.Space.gap + UI.Size.row / 2
+local BAR_HEIGHT = BAR_BORDER + GAP + ROW + GAP
+local BAR_LEFT = PANEL_INSET_LEFT_OFFSET + PADDING
+local BAR_MIDDLE = BAR_BORDER + GAP + ROW / 2
 
 local panel
 
@@ -69,7 +236,7 @@ local function updateTrailing(row, slot)
 end
 
 local function buildSlotInput(row, slot)
-    local input = UI.CreateEditBox(row)
+    local input = CreateEditBox(row)
     input:SetMaxLetters(40)
     input.slot = slot
 
@@ -91,13 +258,13 @@ end
 local TRAILING_WIDTH = 48
 
 local function buildRowButtons(row, slot)
-    local addBtn = UI.CreateButton(row, ADD, TRAILING_WIDTH)
+    local addBtn = CreateButton(row, ADD, TRAILING_WIDTH)
     addBtn:SetPoint("RIGHT", row, "RIGHT")
     addBtn:SetScript("OnClick", function() ns.ApplyRowInput(slot) end)
     addBtn:Hide()
     row.addBtn = addBtn
 
-    local removeBtn = UI.CreateRemoveButton(row)
+    local removeBtn = CreateRemoveButton(row)
     removeBtn:SetScript("OnClick", function() ns.RemoveFinder(slot) end)
     removeBtn:Hide()
     row.removeBtn = removeBtn
@@ -159,8 +326,8 @@ end
 
 -- The row number is the handle, together with the quest icon beside it, so the grip has a visible mark on every row.
 local function buildRowHandle(row, slot)
-    local number = UI.CreateText(row, "heading")
-    number:SetSize(UI.Size.icon, UI.Size.row)
+    local number = CreateText(row, GameFontNormal)
+    number:SetSize(ICON, ROW)
     number:SetPoint("LEFT", row, "LEFT")
     number:SetJustifyH("CENTER")
     number:SetText(slot)
@@ -169,27 +336,27 @@ local function buildRowHandle(row, slot)
     local handle = CreateFrame("Button", nil, row)
     handle:SetPoint("TOPLEFT", row, "TOPLEFT")
     handle:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT")
-    handle:SetWidth(UI.Size.icon + UI.Space.tight + UI.Size.icon)
+    handle:SetWidth(ICON + TIGHT + ICON)
     handle:RegisterForDrag("LeftButton")
     handle:SetScript("OnDragStart", function(self) startRowDrag(self, slot) end)
     handle:SetScript("OnDragStop", stopRowDrag)
-    UI.AttachTooltip(handle, function(tooltip) fillHandleTooltip(tooltip, slot) end)
+    AttachTooltip(handle, function(tooltip) fillHandleTooltip(tooltip, slot) end)
     row.handle = handle
 end
 
 local function buildSlotRow(parent, slot)
     local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(UI.Size.row)
-    local top = -UI.Space.padding - (slot - 1) * ROW_PITCH
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", UI.Space.padding, top)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -UI.Space.padding, top)
+    row:SetHeight(ROW)
+    local top = -PADDING - (slot - 1) * ROW_PITCH
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", PADDING, top)
+    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -PADDING, top)
 
     buildRowHandle(row, slot)
 
     -- Questie's own kill, loot or turn-in icon marks a row the quest log fills. A typed row leaves it empty.
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(UI.Size.icon, UI.Size.icon)
-    icon:SetPoint("LEFT", row.number, "RIGHT", UI.Space.tight, 0)
+    icon:SetSize(ICON, ICON)
+    icon:SetPoint("LEFT", row.number, "RIGHT", TIGHT, 0)
     icon:Hide()
     row.icon = icon
 
@@ -197,9 +364,9 @@ local function buildSlotRow(parent, slot)
     row.input = buildSlotInput(row, slot)
 
     -- InputBoxTemplate hangs only its left cap outside the box, so the box starts that far past one gap.
-    row.input:SetPoint("LEFT", icon, "RIGHT", UI.Space.gap + UI.Native.inputArt, 0)
-    row.input:SetPoint("RIGHT", row.addBtn, "LEFT", -UI.Space.gap, 0)
-    row.removeBtn:SetPoint("LEFT", row.input, "RIGHT", UI.Space.tight, 0)
+    row.input:SetPoint("LEFT", icon, "RIGHT", GAP + EDIT_BOX_CAP, 0)
+    row.input:SetPoint("RIGHT", row.addBtn, "LEFT", -GAP, 0)
+    row.removeBtn:SetPoint("LEFT", row.input, "RIGHT", TIGHT, 0)
     row.updateState = function() updateTrailing(row, slot) end
     ns.AttachAutocomplete(row.input, row.updateState)
 
@@ -214,27 +381,17 @@ end
 
 -- The portrait shows FIND's own icon, so dragging it hands FIND to the cursor, the way a spell leaves the spellbook.
 local function buildFindIcon(frame)
-    local button = CreateFrame("Button", nil, frame.PortraitContainer)
-    button:SetAllPoints(frame:GetPortrait())
-    button:RegisterForDrag("LeftButton")
-    button:SetScript("OnDragStart", function() ns.PickupFinder() end)
-    UI.AttachTooltip(button, fillFindTooltip)
+    local button = CreatePortraitDrag(frame, function() ns.PickupFinder() end)
+    AttachTooltip(button, fillFindTooltip)
 end
 
--- Two lines of help in the attic, the band between the title bar and the Inset, level with the title and one gap either side of the band's middle: a gold line on how to fill the list over a white line with the next FIND step, as Blizzard sets gold over white. Their right edge lines up with the rows below, and a line that does not fit is cut, never wrapped.
-local function buildHelpLine(frame, role, y)
-    local line = UI.CreateText(frame, role)
-    line:SetPoint("LEFT", frame, "TOPLEFT", UI.Native.titleLeft, y)
-    line:SetPoint("RIGHT", frame, "TOPRIGHT", PANEL_INSET_RIGHT_OFFSET - UI.Space.padding, y)
-    line:SetWordWrap(false)
-    return line
-end
-
+-- Two lines of help in the attic, the band between the title bar and the Inset, one gap either side of the band's middle: a gold line on how to fill the list over a white line with the next FIND step, as Blizzard sets gold over white. Their right edge lines up with the rows below.
 local function buildAtticHelp(frame)
     local atticMiddle = (PANEL_INSET_TOP_OFFSET + PANEL_INSET_ATTIC_OFFSET) / 2
-    frame.help = buildHelpLine(frame, "heading", atticMiddle + UI.Space.gap)
+    local rightOffset = PANEL_INSET_RIGHT_OFFSET - PADDING
+    frame.help = CreateAtticLine(frame, GameFontNormal, atticMiddle + GAP, rightOffset)
     frame.help:SetText(HELP_ADD)
-    frame.nextStep = buildHelpLine(frame, "body", atticMiddle - UI.Space.gap)
+    frame.nextStep = CreateAtticLine(frame, GameFontHighlight, atticMiddle - GAP, rightOffset)
 end
 
 -- Blizzard's tooltip helpers carry the standard tooltip colours; the error line says why the box is off.
@@ -249,13 +406,13 @@ end
 
 -- The bar's first control, level with the rows above.
 local function buildQuestBox(frame)
-    local box = UI.CreateCheckbox(frame, QUEST_LABEL)
+    local box = CreateCheckbox(frame, QUEST_LABEL)
     box:SetPoint("LEFT", frame, "BOTTOMLEFT", BAR_LEFT, BAR_MIDDLE)
     box:SetScript("OnClick", function(self) ns.SetQuestNpcs(self:GetChecked()) end)
 
     -- Motion scripts stay alive while disabled, so the tooltip can still explain what is missing.
     box:SetMotionScriptsWhileDisabled(true)
-    UI.AttachTooltip(box, fillQuestTooltip)
+    AttachTooltip(box, fillQuestTooltip)
     frame.questBox = box
 end
 
@@ -271,17 +428,17 @@ end
 
 -- The second bar control follows the first after one padding step.
 local function buildMarkerBox(frame)
-    local box = UI.CreateCheckbox(frame, MARKER_LABEL)
-    box:SetPoint("LEFT", frame.questBox.Text, "RIGHT", UI.Space.padding, 0)
+    local box = CreateCheckbox(frame, MARKER_LABEL)
+    box:SetPoint("LEFT", frame.questBox.Text, "RIGHT", PADDING, 0)
     box:SetScript("OnClick", function(self) ns.SetRaidMarkers(self:GetChecked()) end)
-    UI.AttachTooltip(box, fillMarkerTooltip)
+    AttachTooltip(box, fillMarkerTooltip)
     frame.markerBox = box
 end
 
--- The template's 60px attic, the padded rows and the grown bar add up on the grid; the snap keeps it there if a token changes.
+-- The template's 60px attic, the padded rows and the grown bar add up on the grid; the snap keeps it there if a size changes.
 local function panelHeight()
-    local contentHeight = UI.Space.padding * 2 + MAX_TARGETS * ROW_PITCH - UI.Space.gap
-    return UI.Snap(-PANEL_INSET_ATTIC_OFFSET + contentHeight + BAR_HEIGHT)
+    local contentHeight = PADDING * 2 + MAX_TARGETS * ROW_PITCH - GAP
+    return Snap(-PANEL_INSET_ATTIC_OFFSET + contentHeight + BAR_HEIGHT)
 end
 
 local function updateHelp()
@@ -295,14 +452,7 @@ local function updateHelp()
 end
 
 local function buildPanel()
-    panel = UI.CreateWindow({
-        name = PANEL_NAME,
-        title = ns.ADDON_NAME,
-        icon = ns.ADDON_ICON,
-        width = PANEL_WIDTH,
-        height = panelHeight(),
-        position = TargetFinderDB.position,
-    })
+    panel = CreateWindow(PANEL_NAME, ns.title, ns.ADDON_ICON, PANEL_WIDTH, panelHeight(), ns.db.position)
     -- Blizzard's own setter for the bar under the Inset (Mainline/SharedUIPanelTemplates.lua:57). The brown panel is anchored to the Inset, so it follows.
     FrameTemplate_SetButtonBarHeight(panel, BAR_HEIGHT)
     -- Dropping FIND on a bar while the window is open switches the step line. Bar slots change in bursts on every
@@ -335,7 +485,7 @@ function ns.RefreshPanel()
     local ready = ns.QuestieReady()
     panel.questBox:SetChecked(TargetFinderCharDB.questNpcs)
     panel.questBox:SetEnabled(ready)
-    panel.questBox.Text:SetFontObject(ready and UI.Font.body or UI.Font.muted)
+    panel.questBox.Text:SetFontObject(ready and GameFontHighlight or GameFontDisable)
     panel.markerBox:SetChecked(TargetFinderCharDB.raidMarkers)
 
     local icons = ns.QuestieKindIcons()
@@ -362,7 +512,7 @@ function ns.PanelShown()
 end
 
 -- The minimap button, the addon menu and /tf share this one toggle.
-ns.TogglePanel = UI.CreateToggle(buildPanel)
+ns.TogglePanel = CreateToggle(buildPanel)
 
 -- The welcome line's link only ever opens the window.
 function ns.ShowPanel()

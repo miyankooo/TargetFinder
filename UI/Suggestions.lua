@@ -1,5 +1,4 @@
 local _, ns = ...
-local UI = LibStub("LibNativeUI-1.0")
 
 -- The autocomplete popup under a slot row. It owns nothing but presentation: every name it offers comes from Quest.lua, and picking one goes straight back through the row's own apply path.
 
@@ -10,15 +9,17 @@ local MAX_SUGGESTIONS = ns.MAX_SUGGESTIONS
 -- Blizzard's AutoCompleteBox geometry moved onto the 4px grid: its 14px rows (AutoComplete.xml:17) become 16 so the 16px role icon fits, the 15px text inset (:21) 16, the 10px first-row and hint offsets (:52, :40) 8, the 35px chrome (AutoComplete.lua:296) 36 and the 3px edit-box overlap (AutoComplete.lua:130) 4.
 local ROW_HEIGHT = 16
 local TEXT_INSET = 16
-local ROWS_TOP = UI.Space.gap
-local HINT_BOTTOM = UI.Space.gap
+local ROWS_TOP = 8
+local HINT_BOTTOM = 8
 
 -- 8 above the rows, 8 between the rows and the 12px hint line, 8 below it.
 local CHROME = 36
 local OVERLAP = 4
 
--- Role icons come before the name, one gap clear of it.
-local NAME_INSET = TEXT_INSET + UI.Size.icon + UI.Space.gap
+-- Role icons are the design system's 16 px inline icon and come before the name, one gap clear of it.
+local ICON = 16
+local GAP = 8
+local NAME_INSET = TEXT_INSET + ICON + GAP
 
 local QUEST_LABEL = "[Quest] "
 
@@ -95,14 +96,17 @@ local function defaultSelection(typed)
     return first
 end
 
--- The template anchors its text 15px in and lets it run on; here it starts on the grid and stops at the right edge so a long quest name truncates instead of spilling past the border. Rows are named because the template's ButtonText is "$parentText".
-local function buildRow(parent, name)
-    local row = CreateFrame("Button", name, parent, "AutoCompleteButtonTemplate")
-    row:SetHeight(ROW_HEIGHT)
+-- A suggestion list under an edit box, as the whisper box's autocomplete: a TooltipBackdropTemplate popup with
+-- AutoCompleteButtonTemplate rows, the first one ROWS_TOP below the border. Each row's text starts on the grid and
+-- is cut at the right edge.
+-- The template anchors its text 15px in and lets it run on, so a long quest name would spill past the border. Rows are named because the template's ButtonText is "$parentText".
+local function CreateSuggestionRow(popup, name, height, inset)
+    local row = CreateFrame("Button", name, popup, "AutoCompleteButtonTemplate")
+    row:SetHeight(height)
     local text = row:GetFontString()
     text:ClearAllPoints()
-    text:SetPoint("LEFT", row, "LEFT", TEXT_INSET, 0)
-    text:SetPoint("RIGHT", row, "RIGHT", -TEXT_INSET, 0)
+    text:SetPoint("LEFT", row, "LEFT", inset, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -inset, 0)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
     return row
@@ -122,7 +126,7 @@ end
 
 local function buildQuestIcon(row)
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(UI.Size.icon, UI.Size.icon)
+    icon:SetSize(ICON, ICON)
     icon:SetPoint("LEFT", row, "LEFT", TEXT_INSET, 0)
     icon:Hide()
     row.icon = icon
@@ -141,7 +145,7 @@ local function buildPopup()
     popup.rows = {}
     local above = popup
     for i = 1, MAX_SUGGESTIONS do
-        local row = buildRow(popup, POPUP_NAME .. "Button" .. i)
+        local row = CreateSuggestionRow(popup, POPUP_NAME .. "Button" .. i, ROW_HEIGHT, TEXT_INSET)
         stackRow(row, above)
         buildQuestIcon(row)
         row:SetScript("OnClick", function(self) activate(popup.owner, self.entry) end)
@@ -149,8 +153,8 @@ local function buildPopup()
         above = row
     end
 
-    -- AutoComplete_OnLoad tints this hint with a literal light grey; LIGHTGRAY_FONT_COLOR is the colour object for that shade. It uses the 12px muted role, not Blizzard's 10px hint font.
-    local hint = UI.CreateText(popup, "muted")
+    -- AutoComplete_OnLoad tints this hint with a literal light grey; LIGHTGRAY_FONT_COLOR is the colour object for that shade. It uses the 12px muted role, not Blizzard's 10px hint font. ns.CreateText comes from Panel.lua, which has loaded by the time the first row asks for the popup.
+    local hint = ns.CreateText(popup, GameFontDisable)
     hint:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", TEXT_INSET, HINT_BOTTOM)
     hint:SetText(LIGHTGRAY_FONT_COLOR:WrapTextInColorCode(PRESS_TAB))
 
@@ -160,7 +164,7 @@ end
 local function entryText(entry)
     if entry.type == "quest" then return QUEST_LABEL .. entry.name end
     if entry.isQuestNpc and entry.questName then
-        return entry.name .. " " .. UI.Color.muted:WrapTextInColorCode("(" .. entry.questName .. ")")
+        return entry.name .. " " .. GRAY_FONT_COLOR:WrapTextInColorCode("(" .. entry.questName .. ")")
     end
     return entry.name
 end
@@ -181,7 +185,7 @@ end
 -- AutoComplete_Update's rule: open below the edit box, or above it when the box would run off the bottom of the screen.
 local function anchorTo(input, height)
     popup:SetParent(input)
-    popup:SetFrameStrata(UI.Strata.dialog)
+    popup:SetFrameStrata("DIALOG")
     popup:ClearAllPoints()
     local bottom = input:GetBottom()
     if bottom and bottom - height <= OVERLAP + ROWS_TOP then

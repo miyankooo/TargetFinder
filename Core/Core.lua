@@ -1,9 +1,9 @@
-local _, ns = ...
-local UI = LibStub("LibNativeUI-1.0")
+local addonName, ns = ...
 
 -- Shared constants and the addon's one chat voice.
 
-ns.ADDON_NAME = "Target Finder"
+-- The toc Title names the addon in chat, the window, the unit menu and the launcher.
+ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 
 ns.FIND_MACRO = "FIND"
 
@@ -31,7 +31,7 @@ ns.MINIMAP_DEFAULT_POS = 215
 
 -- One tagged line per user-visible event in the shared chat voice, so the addon never writes to chat by any other route.
 function ns.Announce(msg)
-    UI.Print(ns.ADDON_NAME, msg)
+    print(YELLOW_FONT_COLOR:WrapTextInColorCode("[" .. ns.title .. "]:") .. " " .. msg)
 end
 
 function ns.Trim(value)

@@ -6,14 +6,14 @@ local addonName, ns = ...
 local LINK = LinkTypes.AddOn .. ":" .. addonName
 
 function ns.PrintWelcome()
-    local link = NORMAL_FONT_COLOR:WrapTextInColorCode(LinkUtil.FormatLink(LinkTypes.AddOn, "[" .. ns.ADDON_NAME .. "]", addonName))
+    local link = NORMAL_FONT_COLOR:WrapTextInColorCode(LinkUtil.FormatLink(LinkTypes.AddOn, "[" .. ns.title .. "]", addonName))
     ns.Announce("One FIND macro targets the NPCs your quests need, plus any NPC you add. Open the " .. link
         .. " window or type /tf to add your first NPC, or right-click a portrait and pick Track. Type /tf help for every command.")
 end
 
 -- /tf intro: the welcome line now, and the macro book tip again the next time it opens on FIND.
 function ns.ReplayIntro()
-    TargetFinderDB.tipSeen = nil
+    ns.db.tipSeen = nil
     ns.PrintWelcome()
 end
 

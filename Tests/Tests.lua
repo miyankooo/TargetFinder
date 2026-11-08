@@ -58,12 +58,27 @@ end
 check("UI files live in UI/", tocFiles["UI\\Panel.lua"] and tocFiles["UI\\Suggestions.lua"] and tocFiles["UI\\MinimapButton.lua"])
 check("no UI file left in Core/", not (tocFiles["Core\\Panel.lua"] or tocFiles["Core\\Suggestions.lua"] or tocFiles["Core\\MinimapButton.lua"]))
 check("the marker module and the glow load", tocFiles["Core\\Markers.lua"] and tocFiles["UI\\FinderGlow.lua"])
-local dbIconAt
-for i, line in ipairs(tocOrder) do
-    if line == "Libs\\LibDBIcon-1.0\\LibDBIcon-1.0.lua" then dbIconAt = i end
+-- the UI is built from Blizzard's templates directly; only the minimap button's libraries stay embedded
+local libLines, uiLibrary = {}, false
+for _, line in ipairs(tocOrder) do
+    if line:match("^Libs\\") then libLines[#libLines+1] = line end
+    if line:match("LibNativeUI") then uiLibrary = true end
 end
-check("LibNativeUI loads right after LibDBIcon", dbIconAt and tocOrder[dbIconAt + 1] == "Libs\\LibNativeUI-1.0\\LibNativeUI-1.0.lua",
-      dbIconAt and tocOrder[dbIconAt + 1])
+check("no UI library in the toc", not uiLibrary)
+check("only LibStub, CallbackHandler, LibDataBroker and LibDBIcon are embedded, in that order", #libLines == 4
+      and libLines[1] == "Libs\\LibStub\\LibStub.lua" and libLines[2] == "Libs\\CallbackHandler-1.0\\CallbackHandler-1.0.lua"
+      and libLines[3] == "Libs\\LibDataBroker-1.1\\LibDataBroker-1.1.lua" and libLines[4] == "Libs\\LibDBIcon-1.0\\LibDBIcon-1.0.lua",
+      table.concat(libLines, ", "))
+local libraryCalls = {}
+for _, line in ipairs(tocOrder) do
+    if not line:match("^Libs\\") then
+        local file = io.open(here .. "../" .. line:gsub("\\", "/"))
+        local source = file:read("*a")
+        file:close()
+        if source:match("LibNativeUI") then libraryCalls[#libraryCalls+1] = line end
+    end
+end
+check("no addon file reaches for LibNativeUI", #libraryCalls == 0, table.concat(libraryCalls, ", "))
 -- LibDBIcon registers the addon menu entry itself, so toc entry points would list the addon twice
 for _, key in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
     check("no toc " .. key, toc[key] == nil, toc[key])
@@ -667,8 +682,9 @@ check("the pick creates FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body
       W.macros["FIND"] and W.macros["FIND"].body)
 
 section("panel is a native ButtonFrameTemplate window")
-local UI = LibStub("LibNativeUI-1.0")
-local function onGrid(v) return v % UI.GRID == 0 end
+-- the design system's sizes the panel is built from
+local TIGHT, GAP, PADDING, ROW, ICON = 4, 8, 16, 24, 16
+local function onGrid(v) return v % 4 == 0 end
 ns.WipeTargets()
 ns.TogglePanel()
 local panel = _G.TargetFinderFrame
@@ -690,15 +706,15 @@ check("the wardrobe's brown panel takes the inset's place, its corners hidden", 
       and background.allPoints == panel.Inset and background.BGCornerTopLeft.shown == false and background.BGCornerBottomRight.shown == false
       and panel.Inset.Bg.shown == false and panel.Inset.NineSlice.shown == false)
 local rowAnchor = row1.points[1]
-check("rows are padded on the grid", rowAnchor.x == UI.Space.padding and rowAnchor.y == -UI.Space.padding, rowAnchor.x)
-check("rows sit one gap apart", panel.rows[2].points[1].y == -(UI.Space.padding + UI.Size.row + UI.Space.gap), panel.rows[2].points[1].y)
-check("Add fills the fixed 48px column at the row height", row1.addBtn.width == 48 and row1.addBtn.height == UI.Size.row, row1.addBtn.width)
+check("rows are padded on the grid", rowAnchor.x == PADDING and rowAnchor.y == -PADDING, rowAnchor.x)
+check("rows sit one gap apart", panel.rows[2].points[1].y == -(PADDING + ROW + GAP), panel.rows[2].points[1].y)
+check("Add fills the fixed 48px column at the row height", row1.addBtn.width == 48 and row1.addBtn.height == ROW, row1.addBtn.width)
 check("the X sits one tight step after the input", row1.removeBtn.points[1].point == "LEFT" and row1.removeBtn.points[1].rel == row1.input
-      and row1.removeBtn.points[1].relPoint == "RIGHT" and row1.removeBtn.points[1].x == UI.Space.tight)
-check("each row shows its number in gold", row1.number.text == 1 and panel.rows[8].number.text == 8 and row1.number.fontObject == UI.Font.heading)
-check("the quest icon follows the number", row1.icon.points[1].rel == row1.number and row1.icon.points[1].x == UI.Space.tight)
+      and row1.removeBtn.points[1].relPoint == "RIGHT" and row1.removeBtn.points[1].x == TIGHT)
+check("each row shows its number in gold", row1.number.text == 1 and panel.rows[8].number.text == 8 and row1.number.fontObject == GameFontNormal)
+check("the quest icon follows the number", row1.icon.points[1].rel == row1.number and row1.icon.points[1].x == TIGHT)
 check("panel width is on the grid", panel.width and onGrid(panel.width), panel.width)
-check("inputs use the 12px body font", row1.input.fontObject == UI.Font.body, row1.input.fontObject and row1.input.fontObject.name)
+check("inputs use the 12px body font", row1.input.fontObject == GameFontHighlight, row1.input.fontObject and row1.input.fontObject.name)
 check("inputs use InputBoxTemplate", row1.input.template == "InputBoxTemplate", row1.input.template)
 check("remove is the client's close button without its hide script", row1.removeBtn.template == "UIPanelCloseButtonNoScripts",
       row1.removeBtn.template)
@@ -744,16 +760,16 @@ section("the Auto Apply Quest NPCs box")
 local box = panel.questBox
 local boxAnchor = box.points[1]
 check("a native checkbox", box.template == "CheckboxWithLabelTemplate", box.template)
-check("the bar grows to one gap above and below a checkbox", panel.buttonBarHeight == 4 + UI.Space.gap + UI.Size.row + UI.Space.gap,
+check("the bar grows to one gap above and below a checkbox", panel.buttonBarHeight == 4 + GAP + ROW + GAP,
       panel.buttonBarHeight)
 check("it sits level with the rows, centred in the bar", boxAnchor.point == "LEFT" and boxAnchor.rel == panel and boxAnchor.relPoint == "BOTTOMLEFT"
-      and boxAnchor.x == PANEL_INSET_LEFT_OFFSET + UI.Space.padding and boxAnchor.y == 4 + UI.Space.gap + UI.Size.row / 2,
+      and boxAnchor.x == PANEL_INSET_LEFT_OFFSET + PADDING and boxAnchor.y == 4 + GAP + ROW / 2,
       tostring(boxAnchor.x) .. "," .. tostring(boxAnchor.y))
-check("the window height includes the grown bar", panel.height == -PANEL_INSET_ATTIC_OFFSET + UI.Space.padding * 2
-      + ns.MAX_TARGETS * (UI.Size.row + UI.Space.gap) - UI.Space.gap + panel.buttonBarHeight, panel.height)
+check("the window height includes the grown bar", panel.height == -PANEL_INSET_ATTIC_OFFSET + PADDING * 2
+      + ns.MAX_TARGETS * (ROW + GAP) - GAP + panel.buttonBarHeight, panel.height)
 check("it is labelled", box.Text.text == "Auto Apply Quest NPCs", box.Text.text)
 check("it mirrors the setting", box.checked == true)
-check("it is on while Questie is ready", box.enabled == true and box.Text.fontObject == UI.Font.body)
+check("it is on while Questie is ready", box.enabled == true and box.Text.fontObject == GameFontHighlight)
 ns.WipeTargets()
 ns.targets[3] = ns.MakeEntry("Typed Wolf")
 box:SetChecked(false)
@@ -771,7 +787,7 @@ box.scripts.OnEnter(box)
 check("the tooltip uses Blizzard's title helper", W.tooltip[1] == "title:Auto Apply Quest NPCs", W.tooltip[1])
 _G.Questie.API.isReady = false
 ns.RefreshPanel()
-check("off and greyed while Questie loads", box.enabled == false and box.Text.fontObject == UI.Font.muted)
+check("off and greyed while Questie loads", box.enabled == false and box.Text.fontObject == GameFontDisable)
 box.scripts.OnEnter(box)
 check("the tooltip says why", W.tooltip[#W.tooltip] == "error:Questie is still loading.", W.tooltip[#W.tooltip])
 _G.Questie.API.isReady = true
@@ -785,7 +801,7 @@ check("a native checkbox", markerBox and markerBox.template == "CheckboxWithLabe
 check("it is labelled", markerBox.Text.text == "Apply Raid Markers", markerBox.Text.text)
 local markerAnchor = markerBox.points[1]
 check("it follows the quest box's label one padding step on", markerAnchor.point == "LEFT" and markerAnchor.rel == box.Text
-      and markerAnchor.relPoint == "RIGHT" and markerAnchor.x == UI.Space.padding and markerAnchor.y == 0)
+      and markerAnchor.relPoint == "RIGHT" and markerAnchor.x == PADDING and markerAnchor.y == 0)
 TargetFinderCharDB.raidMarkers = true
 ns.RefreshPanel()
 check("it mirrors the setting", markerBox.checked == true)
@@ -815,11 +831,11 @@ check("it drags with the left button", dragIcon and dragIcon.scripts.OnDragStart
 W.macroOrder = {}; W.macros = {}; W.cursorMacro = nil; W.actions = {}
 ns.RefreshPanel()
 check("the gold help line says how to fill the list", panel.help.text == "Type names below or right-click a portrait to Track."
-      and panel.help.fontObject == UI.Font.heading, panel.help.text)
-check("the white step line sits one band below it", panel.nextStep.fontObject == UI.Font.body
-      and panel.help.points[1].y - panel.nextStep.points[1].y == 2 * UI.Space.gap)
-check("both lines are cut, never wrapped, beside the portrait", panel.help.points[1].x == UI.Native.titleLeft
-      and panel.nextStep.points[1].x == UI.Native.titleLeft and panel.help.wordWrap == false and panel.nextStep.wordWrap == false)
+      and panel.help.fontObject == GameFontNormal, panel.help.text)
+check("the white step line sits one band below it", panel.nextStep.fontObject == GameFontHighlight
+      and panel.help.points[1].y - panel.nextStep.points[1].y == 2 * GAP)
+check("both lines are cut, never wrapped, beside the portrait", panel.help.points[1].x == 58
+      and panel.nextStep.points[1].x == 58 and panel.help.wordWrap == false and panel.nextStep.wordWrap == false)
 check("without FIND, the step says the first name creates it", panel.nextStep.text == "The first name creates your FIND macro.", panel.nextStep.text)
 TargetFinderCharDB.finderIntroduced = nil
 dragIcon.scripts.OnDragStart(dragIcon)
@@ -847,7 +863,7 @@ ns.targets[2] = ns.MakeEntry("Second")
 ns.targets[4] = ns.MakeEntry("Fourth", true, ns.KIND_KILL)
 ns.RefreshPanel()
 local handle3 = panel.rows[3].handle
-check("each row has a drag handle over its number and icon", handle3 and handle3.width == UI.Size.icon + UI.Space.tight + UI.Size.icon)
+check("each row has a drag handle over its number and icon", handle3 and handle3.width == ICON + TIGHT + ICON)
 handle3.scripts.OnEnter(handle3)
 check("its tooltip says how to reorder", W.tooltip[1] == "title:Row 3" and W.tooltip[3] == "instruction:Drag to move this name to another row.",
       table.concat(W.tooltip, " / "))
@@ -899,7 +915,7 @@ input:SetText("kob")
 input.scripts.OnTextChanged(input, true)
 local pop = _G.TargetFinderSuggestions
 check("one shared popup on TooltipBackdropTemplate", pop and pop.template == "TooltipBackdropTemplate", pop and pop.template)
-check("popup sits on the dialog strata above the panel", pop.strata == UI.Strata.dialog, pop.strata)
+check("popup sits on the dialog strata above the panel", pop.strata == "DIALOG", pop.strata)
 check("popup shown for the typing row", pop and pop.shown == true and pop.owner == input)
 local firstRow = _G.TargetFinderSuggestionsButton1
 local secondRow = _G.TargetFinderSuggestionsButton2

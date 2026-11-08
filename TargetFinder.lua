@@ -12,10 +12,11 @@ local function initSavedVars()
         TargetFinderDB = {}
         ns.firstRun = true
     end
-    if type(TargetFinderDB.minimap) ~= "table" then
-        TargetFinderDB.minimap = { hide = false, minimapPos = ns.MINIMAP_DEFAULT_POS }
+    ns.db = TargetFinderDB
+    if type(ns.db.minimap) ~= "table" then
+        ns.db.minimap = { hide = false, minimapPos = ns.MINIMAP_DEFAULT_POS }
     end
-    if type(TargetFinderDB.position) ~= "table" then TargetFinderDB.position = {} end
+    if type(ns.db.position) ~= "table" then ns.db.position = {} end
     if type(TargetFinderCharDB) ~= "table" then TargetFinderCharDB = {} end
 
     -- Auto Apply Quest NPCs fills the list unless the player turned the box off.

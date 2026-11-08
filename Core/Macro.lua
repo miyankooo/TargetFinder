@@ -39,7 +39,7 @@ local function buildFindBody()
     marking = TargetFinderCharDB.raidMarkers == true and ns.CanMark()
 
     -- A comment-only body, so pressing FIND with an empty list leaves the current target alone instead of clearing it.
-    if #ordered == 0 then return "// " .. ns.ADDON_NAME .. " - no targets" end
+    if #ordered == 0 then return "// " .. ns.title .. " - no targets" end
 
     local closing = (marking and "\n/tm !" .. ns.FIND_MARKER or "") .. TAIL
     local lines = {}
@@ -88,7 +88,7 @@ local function queueMacro(name, icon, body, quiet)
         pendingMacros[name] = { icon = icon, body = body }
         if not quiet and not notifiedCombat then
             notifiedCombat = true
-            UIErrorsFrame:AddMessage(ns.ADDON_NAME .. ": FIND updates after combat.", RED_FONT_COLOR:GetRGB())
+            UIErrorsFrame:AddMessage(ns.title .. ": FIND updates after combat.", RED_FONT_COLOR:GetRGB())
         end
         return
     end

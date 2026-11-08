@@ -1,9 +1,32 @@
 local _, ns = ...
-local UI = LibStub("LibNativeUI-1.0")
 
 -- One launcher serves the LibDBIcon minimap button and the Addon Compartment entry LibDBIcon registers, so both share this click and this tooltip. /tf opens the same window.
 
-local launcher
+-- One launcher for the minimap button and the Addon Compartment: LibDBIcon draws the button and adds the
+-- compartment entry through AddonCompartmentFrame, so both share the click and the tooltip. Such an addon has no
+-- AddonCompartmentFunc toc keys. LibStub, CallbackHandler-1.0, LibDataBroker-1.1 and LibDBIcon-1.0 load first.
+local function CreateLauncher(icon, db, onClick, fillTooltip)
+    local LDBIcon = LibStub("LibDBIcon-1.0")
+    if not LDBIcon:IsRegistered(ns.title) then
+        local object = LibStub("LibDataBroker-1.1"):NewDataObject(ns.title, {
+            type = "launcher",
+            text = ns.title,
+            icon = icon,
+            OnClick = function(_, button) onClick(button) end,
+            OnTooltipShow = function(tooltip)
+                GameTooltip_SetTitle(tooltip, ns.title)
+                fillTooltip(tooltip)
+            end,
+        })
+        LDBIcon:Register(ns.title, object, db)
+        LDBIcon:AddButtonToCompartment(ns.title)
+    end
+    -- Shows or hides only the minimap button and remembers it in db.hide; the addon menu entry stays.
+    return function(shown)
+        db.hide = not shown
+        if shown then LDBIcon:Show(ns.title) else LDBIcon:Hide(ns.title) end
+    end
+end
 
 -- Blizzard's tooltip helpers give the lines under the launcher's title the standard colours: green instructions, red for what is missing.
 local function fillLauncherTooltip(tooltip)
@@ -14,36 +37,26 @@ local function fillLauncherTooltip(tooltip)
     end
 end
 
-function ns.SetupMinimapButton()
-    launcher = UI.CreateLauncher({
-        title = ns.ADDON_NAME,
-        icon = ns.ADDON_ICON,
-        db = TargetFinderDB.minimap,
-        -- LibDBIcon hands the minimap button's mouse button through, and the addon menu passes its own the same way.
-        onClick = function(button)
-            if button == "RightButton" then
-                ns.RefreshQuestNpcs()
-            else
-                ns.TogglePanel()
-            end
-        end,
-        tooltip = fillLauncherTooltip,
-    })
+-- LibDBIcon hands the minimap button's mouse button through, and the addon menu passes its own the same way.
+local function onLauncherClick(button)
+    if button == "RightButton" then
+        ns.RefreshQuestNpcs()
+    else
+        ns.TogglePanel()
+    end
 end
 
--- Only the minimap button hides; the addon menu entry stays as the way back.
-local function toggleMinimapButton()
-    local show = TargetFinderDB.minimap.hide == true
-    launcher.setShown(show)
-    ns.Announce(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
+function ns.SetupMinimapButton()
+    ns.SetMinimapShown = CreateLauncher(ns.ADDON_ICON, ns.db.minimap, onLauncherClick, fillLauncherTooltip)
 end
 
 local HELP = "Type /tf for the window, /tf add with a name or a target to track it, /tf refresh to update the quest NPCs, "
     .. "/tf minimap to show or hide the minimap button, /tf intro to see the welcome line and the tip again, or /tf help for this list."
 
--- /tf add takes a name, or the current target's when none is typed. The bare command opens the window; a word it does not know opens nothing.
-local function onSlash(msg)
-    local command, rest = (ns.Trim(msg) or ""):match("^(%S*)%s*(.-)$")
+-- One long command and one short alias. /tf add takes a name, or the current target's when none is typed. The bare command opens the window; a word it does not know opens nothing.
+SLASH_TARGETFINDER1, SLASH_TARGETFINDER2 = "/targetfinder", "/tf"
+SlashCmdList.TARGETFINDER = function(message)
+    local command, rest = (ns.Trim(message) or ""):match("^(%S*)%s*(.-)$")
     command = command:lower()
     if command == "" then
         ns.TogglePanel()
@@ -57,7 +70,10 @@ local function onSlash(msg)
     elseif command == "refresh" then
         ns.RefreshQuestNpcs()
     elseif command == "minimap" then
-        toggleMinimapButton()
+        -- Only the minimap button hides; the addon menu entry stays as the way back.
+        local show = ns.db.minimap.hide == true
+        ns.SetMinimapShown(show)
+        ns.Announce(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
     elseif command == "intro" then
         ns.ReplayIntro()
     elseif command == "help" or command == "?" then
@@ -66,5 +82,3 @@ local function onSlash(msg)
         ns.Announce("Unknown command. Type /tf help for the list.")
     end
 end
-
-UI.RegisterSlash("TARGETFINDER", { "/targetfinder", "/tf" }, onSlash)

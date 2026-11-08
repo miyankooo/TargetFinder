@@ -2,8 +2,20 @@ local _, ns = ...
 
 -- The macro book callout for FIND: Blizzard's proc glow around the large icon the player drags FIND from, plus the addon's one help tip beside it. Both show while the macro book shows FIND and FIND sits on no bar.
 
--- The glow is ActionButtonSpellAlertTemplate (Blizzard_ActionBar/Shared/ActionButtonSpellAlerts.xml) as the addon's own frame laid over that button, sized and centred as GetAlertFrame does it. ActionButtonSpellAlertManager is not used, because it stores its frame on Blizzard's button and the button in its own table, which taints both.
-local GLOW_SCALE = 1.4
+-- Blizzard's proc glow on a Blizzard button the player should use or drag: an own ActionButtonSpellAlertTemplate
+-- frame 1.4 times the button's size, as GetAlertFrame sizes it. Never ActionButtonSpellAlertManager, which stores its
+-- frame on Blizzard's button and in its own table.
+-- The template's OnLoad loops the glow once the start animation ends, and its OnHide stops the loop.
+local function CreateProcGlow(button)
+    local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
+    local width, height = button:GetSize()
+    glow:SetSize(width * 1.4, height * 1.4)
+    glow:SetPoint("CENTER")
+    glow:HookScript("OnShow", function(self) self.ProcStartAnim:Play() end)
+    glow:HookScript("OnHide", function(self) self.ProcStartAnim:Stop() end)
+    glow:Hide()
+    return glow
+end
 
 -- The help tip is an own HelpTipTemplate frame, never HelpTip:Show, which takes a frame from Blizzard's shared pool and taints the help tips Blizzard shows later. Closing it or placing FIND marks it seen for the account, and /tf intro clears that.
 local TIP_TEXT = "Drag FIND, the macro Target Finder created for you, to an action bar."
@@ -11,21 +23,21 @@ local TIP_TEXT = "Drag FIND, the macro Target Finder created for you, to an acti
 local glow, tip
 local active = false
 
-local tipInfo = {
+local info = {
     text = TIP_TEXT,
     buttonStyle = HelpTip.ButtonStyle.Close,
     targetPoint = HelpTip.Point.RightEdgeCenter,
-    onAcknowledgeCallback = function() TargetFinderDB.tipSeen = true end,
+    onAcknowledgeCallback = function() ns.db.tipSeen = true end,
 }
 
-local function showTip(button)
-    if TargetFinderDB.tipSeen or (tip and tip:IsShown()) then return end
+local function showTip(target)
+    if ns.db.tipSeen or (tip and tip:IsShown()) then return end
     if not tip then
-        tip = CreateFrame("Frame", nil, button, "HelpTipTemplate")
+        tip = CreateFrame("Frame", nil, target, "HelpTipTemplate")
         tip.width = HelpTip.width
         tip:SetWidth(tip.width)
     end
-    tip:Init(button, tipInfo, button)
+    tip:Init(target, info, target)
     tip:Show()
 end
 
@@ -55,20 +67,12 @@ local function stop()
 end
 
 local function build()
-    local button = MacroFrame.SelectedMacroButton
-    glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
-    local width, height = button:GetSize()
-    glow:SetSize(width * GLOW_SCALE, height * GLOW_SCALE)
-    glow:SetPoint("CENTER", button, "CENTER")
-
-    -- The template's OnLoad loops the glow once the start animation ends, and its OnHide stops the loop.
-    glow:HookScript("OnShow", function(self) self.ProcStartAnim:Play() end)
-    glow:HookScript("OnHide", function(self) self.ProcStartAnim:Stop() end)
+    glow = CreateProcGlow(MacroFrame.SelectedMacroButton)
 
     -- FIND on a bar is what the tip asks for, so it counts as seen and the callout ends for good. Closing the macro book only ends it until the next time it opens on FIND.
     glow:SetScript("OnEvent", function()
         if not ns.FinderOnBar() then return end
-        TargetFinderDB.tipSeen = true
+        ns.db.tipSeen = true
         stop()
     end)
     MacroFrame:HookScript("OnHide", stop)

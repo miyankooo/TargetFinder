@@ -217,6 +217,17 @@ function CreateFrame(kind, name, parent, template)
     return f
 end
 
+-- the toc's own metadata, read the way the client serves it
+C_AddOns = {
+    GetAddOnMetadata = function(name, field)
+        if name ~= "TargetFinder" then return nil end
+        for raw in io.lines(ADDON .. "TargetFinder.toc") do
+            local key, value = raw:gsub("\r", ""):match("^## ([%w%-]+): (.*)$")
+            if key == field then return value end
+        end
+    end,
+}
+
 function UnitExists(u) return W.units[u] ~= nil end
 function UnitName(u) local x = W.units[u]; return x and x.name end
 function UnitIsPlayer(u) local x = W.units[u]; return x ~= nil and x.player == true end
@@ -366,14 +377,14 @@ CLEAR_ALL = "Clear All"
 PRESS_TAB = "Press Tab"
 ICON_LIST = {}
 for i = 1, 8 do ICON_LIST[i] = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_" .. i .. ":" end
--- the font objects behind LibNativeUI's roles; distinct tables so a test can tell the roles apart
+-- the font objects behind the design system's roles; distinct tables so a test can tell the roles apart
 GameFontNormal = { name = "GameFontNormal" }
 GameFontHighlight = { name = "GameFontHighlight" }
 GameFontDisable = { name = "GameFontDisable" }
 GameFontNormalLarge = { name = "GameFontNormalLarge" }
 -- MagicButton_OnLoad only adjusts anchors that exist when it runs, so record how many there were
 function MagicButton_OnLoad(b) b.magicAnchors = #b.points end
--- ButtonFrameTemplate's attic and button bar helpers, which UI.CreateWindow calls only when a spec asks
+-- ButtonFrameTemplate's attic and button bar helpers
 function ButtonFrameTemplate_HideAttic(f) f.atticHeight = -PANEL_INSET_TOP_OFFSET end
 function FrameTemplate_SetAtticHeight(f, h) f.atticHeight = h end
 function ButtonFrameTemplate_HideButtonBar(f) f.buttonBarHidden = true end
@@ -425,7 +436,7 @@ local function addToCompartment(_, name)
     })
 end
 
--- LibStub with the two libraries the launcher pulls, plus NewLibrary so the embedded LibNativeUI loads for real
+-- LibStub with the two libraries the launcher pulls
 local libs = {
     ["LibDataBroker-1.1"] = { NewDataObject = function(_, _, o) return o end },
     ["LibDBIcon-1.0"] = {
@@ -436,12 +447,7 @@ local libs = {
         Hide = function() W.minimapShown = false end,
     },
 }
-LibStub = setmetatable({
-    NewLibrary = function(_, major)
-        libs[major] = libs[major] or {}
-        return libs[major]
-    end,
-}, { __call = function(_, n) return libs[n] end })
+LibStub = setmetatable({}, { __call = function(_, n) return libs[n] end })
 
 -- the libraries the stub above stands in for; every other toc file loads from disk
 local STUBBED = {
