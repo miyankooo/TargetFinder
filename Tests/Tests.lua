@@ -761,6 +761,12 @@ ns.RefreshPanel()
 check("remove is the client's close button without its hide script", row1.removeBtn.template == "UIPanelCloseButtonNoScripts",
       row1.removeBtn.template)
 check("add is a Blizzard panel button", row1.addBtn.template == "UIPanelButtonTemplate", row1.addBtn.template)
+row1.input.scripts.OnEnter(row1.input)
+check("the name box explains itself", W.tooltip[1] == "title:Row 1"
+      and W.tooltip[2] == "normal:Type an NPC or player name and press Enter. FIND matches whole names only.", table.concat(W.tooltip, " / "))
+row1.addBtn.scripts.OnEnter(row1.addBtn)
+check("Add explains itself", W.tooltip[1] == "title:Add" and W.tooltip[2] == "normal:Saves the typed name in this row. Enter does the same.",
+      table.concat(W.tooltip, " / "))
 row1.input:SetText("Kobold")
 row1.updateState()
 check("typing a new name offers Add", row1.addBtn.shown == true and row1.removeBtn.shown == false)
@@ -772,6 +778,9 @@ ns.targets[2] = ns.MakeEntry("Other")
 row1.input:SetText("Mine")
 row1.updateState()
 check("a stored row offers its X", row1.removeBtn.shown == true and row1.addBtn.shown == false)
+row1.removeBtn.scripts.OnEnter(row1.removeBtn)
+check("the X names what it takes off", W.tooltip[1] == "title:Remove" and W.tooltip[2] == "normal:Takes Mine off the FIND list.",
+      table.concat(W.tooltip, " / "))
 row1.input:SetText("Other")
 row1.updateState()
 check("another slot's name offers Add, never that slot's X", row1.addBtn.shown == true and row1.removeBtn.shown == false)

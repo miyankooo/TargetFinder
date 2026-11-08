@@ -34,6 +34,17 @@ local function AttachTooltip(frame, fill, anchor)
     frame:SetScript("OnLeave", GameTooltip_Hide)
 end
 
+-- AttachTooltip for a frame whose template already sets OnEnter and OnLeave, such as InputBoxInstructionsTemplate and
+-- UIPanelButtonTemplate: the same tooltip, hooked so the template's own scripts still run.
+local function HookTooltip(frame, fill, anchor)
+    frame:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
+        fill(GameTooltip, self)
+        GameTooltip:Show()
+    end)
+    frame:HookScript("OnLeave", GameTooltip_Hide)
+end
+
 -- Rounds a length derived from text up to the 4 px grid.
 local function Snap(length)
     return math.ceil(length / 4) * 4
@@ -194,6 +205,9 @@ local STEP_PRESS = "Press FIND to target the first listed NPC in range."
 -- The list's empty state. The rows fill the inset, so instead of a centred line over them the first row's own grey hint says what the list takes while nothing is listed; the attic's gold line already says how to fill it.
 local EMPTY_HINT = "NPC or player name"
 
+local NAME_HELP = "Type an NPC or player name and press Enter. FIND matches whole names only."
+local ADD_HELP = "Saves the typed name in this row. Enter does the same."
+
 local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
 
 local QUEST_LABEL = "Auto Apply Quest NPCs"
@@ -260,6 +274,10 @@ local function buildSlotInput(row, slot)
         ns.HideSuggestions(self)
         row.updateState()
     end)
+    HookTooltip(input, function(tooltip)
+        GameTooltip_SetTitle(tooltip, "Row " .. slot)
+        GameTooltip_AddNormalLine(tooltip, NAME_HELP)
+    end)
     return input
 end
 
@@ -270,11 +288,21 @@ local function buildRowButtons(row, slot)
     local addBtn = CreateButton(row, ADD, TRAILING_WIDTH)
     addBtn:SetPoint("RIGHT", row, "RIGHT")
     addBtn:SetScript("OnClick", function() ns.ApplyRowInput(slot) end)
+    HookTooltip(addBtn, function(tooltip)
+        GameTooltip_SetTitle(tooltip, ADD)
+        GameTooltip_AddNormalLine(tooltip, ADD_HELP)
+    end)
     addBtn:Hide()
     row.addBtn = addBtn
 
+    -- The X only shows on a stored row, so its tooltip names that row's entry, in the words of the unit menu's Untrack.
     local removeBtn = CreateRemoveButton(row)
     removeBtn:SetScript("OnClick", function() ns.RemoveFinder(slot) end)
+    AttachTooltip(removeBtn, function(tooltip)
+        local stored = ns.targets[slot]
+        GameTooltip_SetTitle(tooltip, REMOVE)
+        if stored then GameTooltip_AddNormalLine(tooltip, "Takes " .. stored.name .. " off the FIND list.") end
+    end)
     removeBtn:Hide()
     row.removeBtn = removeBtn
 end

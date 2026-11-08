@@ -402,6 +402,7 @@ HelpTip = { width = 226, ButtonStyle = { None = 0, Okay = 1, Close = 2 }, Point 
 W.loginCallbacks = {}
 EventUtil = { ContinueOnPlayerLogin = function(fn) W.loginCallbacks[#W.loginCallbacks+1] = fn end }
 ADD = "Add"
+REMOVE = "Remove"
 CLEAR_ALL = "Clear All"
 PRESS_TAB = "Press Tab"
 ICON_LIST = {}
