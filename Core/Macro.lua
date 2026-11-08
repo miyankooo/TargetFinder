@@ -62,7 +62,7 @@ local capWarned = false
 local function warnMacroCap(name)
     if capWarned then return end
     capWarned = true
-    ns.Announce("Could not write the " .. name .. " macro, because this character has " .. CHARACTER_MACRO_CAP
+    ns.Print("Could not write the " .. name .. " macro, because this character has " .. CHARACTER_MACRO_CAP
         .. " macros. Delete one in the macro book (/m) and try again.")
 end
 
@@ -158,7 +158,7 @@ local reminded = false
 function ns.MacroHint()
     if reminded or ns.FinderOnBar() then return nil end
     reminded = true
-    return "Target Finder created your FIND macro. Drag it from the macro book (/m) to an action bar."
+    return "Drag FIND from the macro book (/m) to an action bar."
 end
 
 -- While FIND sits on no bar yet, the macro book opens on it with its icon glowing, so the player can drag it out: after it is first created, after Track and after /tf add. In combat the write is still queued, so there is nothing to show yet. SelectMacro takes an index within the tab, and character macros follow the account ones (Blizzard_MacroUI.lua:164-178).

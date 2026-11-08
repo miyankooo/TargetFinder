@@ -216,7 +216,7 @@ function ns.ApplyRowInput(slot)
     elseif not existingSlot then
         ns.SetSlot(slot, typed)
     elseif existingSlot ~= slot then
-        ns.Announce(typed .. " is already tracked.")
+        ns.Print(typed .. " is already tracked.")
         input:SetText(current and current.name or "")
     end
     input:ClearFocus()

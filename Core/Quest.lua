@@ -12,7 +12,7 @@ local function guarded(fn, ...)
     if ok then return true, result end
     if not readFailed then
         readFailed = true
-        ns.Announce("Could not read Questie data (" .. tostring(result) .. "). Updating Questie or Target Finder should fix it.")
+        ns.Print("Could not read Questie data (" .. tostring(result) .. "). Updating Questie or Target Finder should fix it.")
     end
     return false, nil
 end
@@ -524,17 +524,17 @@ end
 -- The minimap right-click and /tf refresh: the quest rows swap for the quest NPCs closest to the player right now, also with Auto Apply Quest NPCs off. One chat line says what happened, since the window may be closed.
 function ns.RefreshQuestNpcs()
     if not ns.QuestieReady() then
-        ns.Announce(ns.QuestieExcuse())
+        ns.Print(ns.QuestieExcuse())
         return
     end
     syncQuestNpcs(true, true)
     local count = questEntryCount()
     if count > 0 then
-        ns.Announce(("Updated the quest NPCs: %d |4row:rows; filled."):format(count))
+        ns.Print(("Updated the quest NPCs: %d |4row:rows; filled."):format(count))
     elseif not ns.FirstEmptySlot() then
-        ns.Announce("Every row holds a name you added, so no quest NPC fits. Remove one first.")
+        ns.Print("Every row holds a name you added, so no quest NPC fits. Remove one first.")
     else
-        ns.Announce("No quest NPCs found nearby.")
+        ns.Print("No quest NPCs found nearby.")
     end
 end
 
@@ -542,12 +542,12 @@ end
 function ns.TrackQuest(questId)
     local picks = ns.QuestNpcs(questId)
     if #picks == 0 then
-        ns.Announce("No NPCs found for that quest.")
+        ns.Print("No NPCs found for that quest.")
         return
     end
     ns.SyncQuestEntries(picks, nil, true)
     if not ns.SlotForName(picks[1].name) then
-        ns.Announce("The list is full. Remove a name first.")
+        ns.Print("The list is full. Remove a name first.")
         return
     end
     syncQuestNpcs(false)

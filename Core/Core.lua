@@ -29,9 +29,9 @@ ns.KIND_TURNIN = 3
 ns.ADDON_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
 ns.MINIMAP_DEFAULT_POS = 215
 
--- One tagged line per user-visible event in the shared chat voice, so the addon never writes to chat by any other route.
-function ns.Announce(msg)
-    print(YELLOW_FONT_COLOR:WrapTextInColorCode("[" .. ns.title .. "]:") .. " " .. msg)
+-- Every chat line goes through here, so the addon never writes to chat by any other route: the bracketed title in NORMAL_FONT_COLOR, the gold of Blizzard's own chat links, then the message in the chat frame's own colour.
+function ns.Print(message)
+    print(NORMAL_FONT_COLOR:WrapTextInColorCode("[" .. ns.title .. "]") .. ": " .. message)
 end
 
 function ns.Trim(value)

@@ -317,7 +317,12 @@ function EditMacro(i, n, icon, body) W.macros[n].icon, W.macros[n].body = icon, 
 function GetActionInfo(slot) local a = W.actions[slot]; if a then return a.kind, a.id end end
 function PickupMacro(index) W.cursorMacro = index end
 
-function print(...) W.chat[#W.chat+1] = table.concat({...}, " ") end
+-- W.chat is what a test looks at and resets; W.allChat keeps every line the addon printed, for the prefix check at the end
+function print(...)
+    local line = table.concat({...}, " ")
+    W.chat[#W.chat+1] = line
+    if W.allChat then W.allChat[#W.allChat+1] = line end
+end
 tinsert = table.insert
 
 -- the argument is Nilable = false, so nil raises like the client is expected to

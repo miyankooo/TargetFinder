@@ -22,7 +22,8 @@ local function targetCount()
     return n
 end
 
--- boot the addon the way the client does
+-- boot the addon the way the client does; from here on every chat line is kept
+W.allChat = {}
 TargetFinderDB = nil; TargetFinderCharDB = nil
 local boot
 for f in pairs(_G.__frames) do if f.events["ADDON_LOADED"] then boot = f end end
@@ -260,8 +261,11 @@ check("stored the NPC name", ns.targets[1] and ns.targets[1].name == "Mangeclaw"
 check("did NOT store 'Raid Target Icon'", ns.targets[1] and ns.targets[1].name ~= "Raid Target Icon")
 check("a player's Track creates FIND", W.macros["FIND"] ~= nil)
 check("tracking never calls SetRaidTarget", W.markCalls == 0, W.markCalls)
-check("one chat line with the bar reminder", #W.chat == 1 and chatHas("^.*Tracking Mangeclaw%. Target Finder created your FIND macro%. Drag it from the macro book %(/m%) to an action bar%.$"),
+check("one chat line with the bar reminder", #W.chat == 1 and chatHas("^.*Tracking Mangeclaw%. Drag FIND from the macro book %(/m%) to an action bar%.$"),
       table.concat(W.chat, " / "))
+check("the line opens with the gold title, the rest uncoloured", W.chat[1]
+      == NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]") .. ": Tracking Mangeclaw. Drag FIND from the macro book (/m) to an action bar.",
+      W.chat[1])
 check("Track opens the macro book", MacroFrame and MacroFrame.shown == true)
 check("on the character tab with FIND selected", MacroFrame and MacroFrame.tab == 2 and MacroFrame.selected == GetMacroIndexByName("FIND") - 120,
       MacroFrame and (tostring(MacroFrame.tab) .. "/" .. tostring(MacroFrame.selected)))
@@ -1202,6 +1206,15 @@ check("a character is introduced once", MacroFrame.shown == false)
 
 section("markers never come from tracking or the macro")
 check("no list change called SetRaidTarget", W.markCalls == 0, W.markCalls)
+
+section("every chat line goes through ns.Print")
+local prefix = NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]") .. ": "
+local offPrefix = {}
+for _, line in ipairs(W.allChat) do
+    if line:sub(1, #prefix) ~= prefix then offPrefix[#offPrefix+1] = line end
+end
+check("the suite printed lines", #W.allChat > 10, #W.allChat)
+check("each one starts with the gold [Target Finder] and an uncoloured colon", #offPrefix == 0, table.concat(offPrefix, " / "))
 
 io.write(("\n%d passed, %d failed\n"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

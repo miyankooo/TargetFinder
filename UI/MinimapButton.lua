@@ -65,7 +65,7 @@ SlashCmdList.TARGETFINDER = function(message)
         if name then
             ns.AddFinder(name)
         else
-            ns.Announce("Type a name or target a unit first.")
+            ns.Print("Type a name or target a unit first.")
         end
     elseif command == "refresh" then
         ns.RefreshQuestNpcs()
@@ -73,12 +73,12 @@ SlashCmdList.TARGETFINDER = function(message)
         -- Only the minimap button hides; the addon menu entry stays as the way back.
         local show = ns.db.minimap.hide == true
         ns.SetMinimapShown(show)
-        ns.Announce(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
+        ns.Print(show and "Minimap button shown." or "Minimap button hidden. Type /tf minimap to show it again.")
     elseif command == "intro" then
         ns.ReplayIntro()
     elseif command == "help" or command == "?" then
-        ns.Announce(HELP)
+        ns.Print(HELP)
     else
-        ns.Announce("Unknown command. Type /tf help for the list.")
+        ns.Print("Unknown command. Type /tf help for the list.")
     end
 end

@@ -6,13 +6,13 @@ local MAX_TARGETS = ns.MAX_TARGETS
 local function report(text, remind)
     if ns.PanelShown() then return end
     local hint = remind and ns.MacroHint()
-    ns.Announce(hint and (text .. " " .. hint) or text)
+    ns.Print(hint and (text .. " " .. hint) or text)
 end
 
 -- A name from a unit menu goes first, so FIND prefers what the player just picked. Everything else moves down one slot. A full list gives up its last quest entry, or its last entry when every name was typed.
 function ns.AddFinder(name)
     if ns.SlotForName(name) then
-        ns.Announce(name .. " is already tracked.")
+        ns.Print(name .. " is already tracked.")
         return
     end
 

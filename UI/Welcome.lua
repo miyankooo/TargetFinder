@@ -7,7 +7,7 @@ local LINK = LinkTypes.AddOn .. ":" .. addonName
 
 function ns.PrintWelcome()
     local link = NORMAL_FONT_COLOR:WrapTextInColorCode(LinkUtil.FormatLink(LinkTypes.AddOn, "[" .. ns.title .. "]", addonName))
-    ns.Announce("One FIND macro targets the NPCs your quests need, plus any NPC you add. Open the " .. link
+    ns.Print("One FIND macro targets the NPCs your quests need, plus any NPC you add. Open the " .. link
         .. " window or type /tf to add your first NPC, or right-click a portrait and pick Track. Type /tf help for every command.")
 end
 
