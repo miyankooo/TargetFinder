@@ -334,6 +334,7 @@ function MagicButton_OnLoad(b) b.magicAnchors = #b.points end
 function ButtonFrameTemplate_HideAttic(f) f.atticHeight = -PANEL_INSET_TOP_OFFSET end
 function FrameTemplate_SetAtticHeight(f, h) f.atticHeight = h end
 function ButtonFrameTemplate_HideButtonBar(f) f.buttonBarHidden = true end
+function FrameTemplate_SetButtonBarHeight(f, h) f.buttonBarHeight = h end
 PANEL_INSET_LEFT_OFFSET = 4
 PANEL_INSET_RIGHT_OFFSET = -6
 PANEL_INSET_BOTTOM_OFFSET = 4

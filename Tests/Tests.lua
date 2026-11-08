@@ -665,8 +665,13 @@ section("the Auto Apply Quest NPCs box")
 local box = panel.questBox
 local boxAnchor = box.points[1]
 check("a native checkbox", box.template == "CheckboxWithLabelTemplate", box.template)
-check("it sits where a bar button would start", boxAnchor.point == "LEFT" and boxAnchor.rel == panel and boxAnchor.relPoint == "BOTTOMLEFT"
-      and boxAnchor.x == 4 and boxAnchor.y == 4 + UI.Native.buttonHeight / 2, tostring(boxAnchor.x) .. "," .. tostring(boxAnchor.y))
+check("the bar grows to one gap above and below a checkbox", panel.buttonBarHeight == 4 + UI.Space.gap + UI.Size.row + UI.Space.gap,
+      panel.buttonBarHeight)
+check("it sits level with the rows, centred in the bar", boxAnchor.point == "LEFT" and boxAnchor.rel == panel and boxAnchor.relPoint == "BOTTOMLEFT"
+      and boxAnchor.x == PANEL_INSET_LEFT_OFFSET + UI.Space.padding and boxAnchor.y == 4 + UI.Space.gap + UI.Size.row / 2,
+      tostring(boxAnchor.x) .. "," .. tostring(boxAnchor.y))
+check("the window height includes the grown bar", panel.height == -PANEL_INSET_ATTIC_OFFSET + UI.Space.padding * 2
+      + ns.MAX_TARGETS * (UI.Size.row + UI.Space.gap) - UI.Space.gap + panel.buttonBarHeight, panel.height)
 check("it is labelled", box.Text.text == "Auto Apply Quest NPCs", box.Text.text)
 check("it mirrors the setting", box.checked == true)
 check("it is on while Questie is ready", box.enabled == true and box.Text.fontObject == UI.Font.body)

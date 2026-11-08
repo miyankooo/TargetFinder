@@ -26,8 +26,11 @@ local MARKER_LABEL = "Apply Raid Markers"
 local MARKER_HELP = "When you target an NPC from the list, it gets the raid marker of its row."
 local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
 
--- MagicButton_OnLoad's inset for a bar control in the bottom-left corner (Mainline/SharedUIPanelTemplates.lua:34). The checkbox centres on the 22px bar button slot there.
-local BAR_INSET = 4
+-- The template's 26px button bar fits a 22px button, which leaves a 24px checkbox no room. The bar grows to one gap above and below the checkboxes, measured from the frame's bottom border, MagicButton_OnLoad's 4px inset (Mainline/SharedUIPanelTemplates.lua:34). The checkboxes start at the rows' left edge.
+local BAR_BORDER = 4
+local BAR_HEIGHT = BAR_BORDER + UI.Space.gap + UI.Size.row + UI.Space.gap
+local BAR_LEFT = PANEL_INSET_LEFT_OFFSET + UI.Space.padding
+local BAR_MIDDLE = BAR_BORDER + UI.Space.gap + UI.Size.row / 2
 
 local panel
 
@@ -159,10 +162,10 @@ local function fillQuestTooltip(tooltip)
     end
 end
 
--- The bar's first control sits where a bar button would start.
+-- The bar's first control, level with the rows above.
 local function buildQuestBox(frame)
     local box = UI.CreateCheckbox(frame, QUEST_LABEL)
-    box:SetPoint("LEFT", frame, "BOTTOMLEFT", BAR_INSET, BAR_INSET + UI.Native.buttonHeight / 2)
+    box:SetPoint("LEFT", frame, "BOTTOMLEFT", BAR_LEFT, BAR_MIDDLE)
     box:SetScript("OnClick", function(self) ns.SetQuestNpcs(self:GetChecked()) end)
 
     -- Motion scripts stay alive while disabled, so the tooltip can still explain what is missing.
@@ -194,10 +197,10 @@ local function buildMarkerBox(frame)
     frame.markerBox = box
 end
 
--- The template's attic and button bar offsets (60 and 26) put the padded rows off the grid, so the height snaps up and the extra 2px fall into the inset's bottom padding.
+-- The template's 60px attic, the padded rows and the grown bar add up on the grid; the snap keeps it there if a token changes.
 local function panelHeight()
     local contentHeight = UI.Space.padding * 2 + MAX_TARGETS * ROW_PITCH - UI.Space.gap
-    return UI.Snap(-PANEL_INSET_ATTIC_OFFSET + contentHeight + PANEL_INSET_BOTTOM_BUTTON_OFFSET)
+    return UI.Snap(-PANEL_INSET_ATTIC_OFFSET + contentHeight + BAR_HEIGHT)
 end
 
 local function updateHelp()
@@ -219,6 +222,8 @@ local function buildPanel()
         height = panelHeight(),
         position = TargetFinderDB.position,
     })
+    -- Blizzard's own setter for the bar under the Inset (Mainline/SharedUIPanelTemplates.lua:57). The brown panel is anchored to the Inset, so it follows.
+    FrameTemplate_SetButtonBarHeight(panel, BAR_HEIGHT)
     -- Dropping FIND on a bar while the window is open switches the help line. Bar slots change in bursts on every
     -- form and page swap, so the event is only watched while the window shows.
     panel:SetScript("OnShow", function(self)
