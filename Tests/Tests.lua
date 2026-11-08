@@ -135,37 +135,27 @@ ns.WriteFinderMacro()
 check("cap failure announced", chatHas("Delete one in the macro book"), table.concat(W.chat, " / "))
 W.macroCap = 120
 
-section("Apply Raid Markers writes /tm lines into FIND")
+section("Apply Raid Markers adds RestedXP's marker line to FIND")
 TargetFinderCharDB.raidMarkers = true
 W.units = {}
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta"); ns.targets[4] = ns.MakeEntry("Delta")
 ns.WriteFinderMacro()
-local MARKED_TAIL = "\n/targetlasttarget [noexists][dead]"
-check("each row's /targetexact is followed by its own marker, lowest row first",
-      W.macros["FIND"].body == "/cleartarget\n/targetexact Delta\n/tm [harm,nodead] ~5\n/targetexact Beta\n/tm [harm,nodead] ~7"
-      .. "\n/targetexact Alpha\n/tm [harm,nodead] ~8" .. MARKED_TAIL, W.macros["FIND"].body:gsub("\n", "|"))
-check("markers follow the row number, not the position", W.macros["FIND"].body:match("Delta\n/tm %[harm,nodead%] ~5") ~= nil)
+check("RestedXP's body: reversed names, the cross, then the corpse guard",
+      W.macros["FIND"].body == "/targetexact Delta\n/targetexact Beta\n/targetexact Alpha\n/tm !7\n/targetlasttarget [dead]",
+      (W.macros["FIND"].body:gsub("\n", "|")))
 check("the addon itself never marks", W.markCalls == 0, W.markCalls)
 ns.WipeTargets()
-for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Mob%d"):format(i) .. "xx") end
+for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Name%d"):format(i) .. string.rep("x", 28)) end
 ns.WriteFinderMacro()
 local full = W.macros["FIND"].body
 check("a long list stays within the cap", #full <= 255, #full)
-check("the rows without room go first and unmarked, before /cleartarget", full:match("^/targetexact Mob8xx\n") ~= nil
-      and not full:match("Mob8xx\n/tm") and full:match("\n/cleartarget\n") ~= nil, (full:gsub("\n", "|")))
-local lastRow = "/targetexact Mob1xx\n/tm [harm,nodead] ~8" .. MARKED_TAIL
-check("row 1 is still marked and last", full:sub(-#lastRow) == lastRow, (full:gsub("\n", "|")))
-check("every name is still in FIND", select(2, full:gsub("/targetexact", "")) == 8)
-ns.WipeTargets()
-for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Name%d"):format(i) .. string.rep("x", 18)) end
-ns.WriteFinderMacro()
-check("with no room for any marker, FIND is the plain macro", not W.macros["FIND"].body:match("/tm") and not W.macros["FIND"].body:match("/cleartarget")
-      and W.macros["FIND"].body:sub(-#TAIL) == TAIL, W.macros["FIND"].body:gsub("\n", "|"))
+check("the marker and the corpse guard always stay", full:sub(-32) == "\n/tm !7\n/targetlasttarget [dead]", (full:gsub("\n", "|")))
+check("the lowest rows drop first", full:match("Name8") == nil and full:match("/targetexact Name1x+\n/tm") ~= nil)
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Kobold")
 ns.WriteFinderMacro()
-local function marks() return W.macros["FIND"].body:match("/tm ") ~= nil end
+local function marks() return W.macros["FIND"].body:match("\n/tm !7\n") ~= nil end
 check("solo, FIND marks", marks())
 local macroEvents
 for f in pairs(_G.__frames) do if f.events["GROUP_ROSTER_UPDATE"] then macroEvents = f end end
@@ -173,13 +163,13 @@ check("group changes are watched", macroEvents ~= nil and macroEvents.events["PA
 local function groupEvent(event) macroEvents.scripts.OnEvent(macroEvents, event or "GROUP_ROSTER_UPDATE") end
 W.group = "party"
 groupEvent()
-check("a party member who does not lead gets no marker lines", not marks(), W.macros["FIND"].body)
+check("a party member who does not lead gets no marker line", not marks(), W.macros["FIND"].body)
 W.leader = true
 groupEvent("PARTY_LEADER_CHANGED")
 check("the party leader marks", marks())
 W.group, W.leader = "raid", false
 groupEvent()
-check("a plain raid member gets no marker lines", not marks())
+check("a plain raid member gets no marker line", not marks())
 W.assistant = true
 groupEvent()
 check("a raid assistant marks", marks())
@@ -806,13 +796,12 @@ markerBox:SetChecked(true)
 markerBox.scripts.OnClick(markerBox)
 check("ticking saves it again", TargetFinderCharDB.raidMarkers == true)
 markerBox.scripts.OnEnter(markerBox)
-check("the tooltip names each row's marker", W.tooltip[1] == "title:Apply Raid Markers" and W.tooltip[3] == "highlight:Row 1: Skull"
-      and W.tooltip[10] == "highlight:Row 8: Star", table.concat(W.tooltip, " / "))
-check("it says rows without room stay unmarked", W.tooltip[11] == "normal:Rows that do not fit in the 255-character macro stay unmarked, from row 8 up.")
-check("solo, the rights line is plain", W.tooltip[12] == "normal:In a group, markers need leader or assistant rights.", W.tooltip[12])
+check("the tooltip says FIND marks its pick with a cross", W.tooltip[1] == "title:Apply Raid Markers"
+      and W.tooltip[2] == "normal:FIND marks the NPC it targets with a cross, as RestedXP's targeting macro does.", table.concat(W.tooltip, " / "))
+check("solo, the rights line is plain", W.tooltip[3] == "normal:In a group, markers need leader or assistant rights.", W.tooltip[3])
 W.group = "party"
 markerBox.scripts.OnEnter(markerBox)
-check("without rights, it is an error line", W.tooltip[12] == "error:In a group, markers need leader or assistant rights.", W.tooltip[12])
+check("without rights, it is an error line", W.tooltip[3] == "error:In a group, markers need leader or assistant rights.", W.tooltip[3])
 W.group = nil
 TargetFinderCharDB.raidMarkers = false
 

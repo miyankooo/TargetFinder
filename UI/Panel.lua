@@ -25,8 +25,7 @@ local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your
 local QUEST_REFRESH = "Right-click the minimap button or type /tf refresh to update them now, also with this box off."
 
 local MARKER_LABEL = "Apply Raid Markers"
-local MARKER_HELP = "When you press FIND, each listed NPC it finds gets the raid marker of its row. An NPC that already has a marker keeps it."
-local MARKER_ROOM = "Rows that do not fit in the 255-character macro stay unmarked, from row 8 up."
+local MARKER_HELP = "FIND marks the NPC it targets with a cross, as RestedXP's targeting macro does."
 local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
 
 -- The template's 26px button bar fits a 22px button, which leaves a 24px checkbox no room. The bar grows to one gap above and below the checkboxes, measured from the frame's bottom border, MagicButton_OnLoad's 4px inset (Mainline/SharedUIPanelTemplates.lua:34). The checkboxes start at the rows' left edge.
@@ -260,14 +259,9 @@ local function buildQuestBox(frame)
     frame.questBox = box
 end
 
--- One line per row, with Blizzard's own marker names (RAID_TARGET_1 to 8).
 local function fillMarkerTooltip(tooltip)
     GameTooltip_SetTitle(tooltip, MARKER_LABEL)
     GameTooltip_AddNormalLine(tooltip, MARKER_HELP)
-    for slot, marker in ipairs(ns.SLOT_MARKERS) do
-        GameTooltip_AddHighlightLine(tooltip, "Row " .. slot .. ": " .. _G["RAID_TARGET_" .. marker])
-    end
-    GameTooltip_AddNormalLine(tooltip, MARKER_ROOM)
     if ns.CanMark() then
         GameTooltip_AddNormalLine(tooltip, MARKER_RIGHTS)
     else

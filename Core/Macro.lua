@@ -23,48 +23,17 @@ local function setMacro(name, icon, body)
     return ok, ok and not existed
 end
 
--- RestedXP's targeting macro (RXPGuides Targeting.lua, UpdateMacro): one /targetexact per slot in REVERSE, so slot 1 is the last line and wins, then /targetlasttarget [dead] steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. On overflow at the 255-character cap the lowest-priority lines drop off the top.
-local PLAIN_TAIL = "\n/targetlasttarget [dead]"
+-- FIND is RestedXP's targeting macro (RXPGuides v4.11.34 Targeting.lua:176-266, UpdateMacro), line for line: one /targetexact per row in REVERSE, so row 1 is the last line and wins; then RestedXP's /tm !<marker> on Forever, whose "!" leaves the marker on a unit that already carries it (SlashCommands.lua:1458-1464); then /targetlasttarget [dead], which steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. Like RestedXP, the lowest rows drop off the top until the targeting lines fit what the two closing lines leave of the 255-character cap.
+-- Addons may not mark on Forever (SetRaidTarget raised ADDON_ACTION_FORBIDDEN in game on 2026-11-08, and RestedXP's UpdateMarker returns early there), so /tm, Blizzard's secure path, is the only way. The marker line is written only while Apply Raid Markers is ticked and the player may mark.
+local TAIL = "\n/targetlasttarget [dead]"
 
-local function plainBody(ordered)
-    local lines = {}
-    for i = #ordered, 1, -1 do
-        lines[#lines + 1] = "/targetexact " .. ordered[i].name
-    end
-    local body = table.concat(lines, "\n") .. PLAIN_TAIL
-    while #body > MACRO_LIMIT and #lines > 1 do
-        table.remove(lines, 1)
-        body = table.concat(lines, "\n") .. PLAIN_TAIL
-    end
-    return body
-end
-
--- Apply Raid Markers, written into FIND because addons may not call SetRaidTarget on Forever (ADDON_ACTION_FORBIDDEN, seen in game 2026-11-08); /tm is Blizzard's secure path. Each marked row's /targetexact is followed by /tm with the "~" prefix, which leaves a unit that already carries any marker (SlashCommands.lua:1465-1470). A found unit is marked at once, so the lines after it, which find nothing and keep it targeted, cannot mark it again. Every listed unit FIND passes gets its row's marker, and the last match stays targeted.
--- The /cleartarget in front stops those lines from marking the player's own target or an unmarked row's match. /targetlasttarget [noexists] brings that target back when no marked row matches, and [dead] steps back from a corpse as before.
--- Rows that do not fit the cap stay unmarked: they go first, before /cleartarget, so a marked row still wins. Marking drops from the lowest rows until the body fits, and with no room at all FIND is the plain macro.
-local MARKED_TAIL = "\n/targetlasttarget [noexists][dead]"
-
-local function markedBody(ordered, marked)
-    local lines = {}
-    for i = #ordered, marked + 1, -1 do
-        lines[#lines + 1] = "/targetexact " .. ordered[i].name
-    end
-    lines[#lines + 1] = "/cleartarget"
-    for i = marked, 1, -1 do
-        lines[#lines + 1] = "/targetexact " .. ordered[i].name
-        lines[#lines + 1] = "/tm [harm,nodead] ~" .. ns.SLOT_MARKERS[ordered[i].slot]
-    end
-    return table.concat(lines, "\n") .. MARKED_TAIL
-end
-
--- Whether the last body carries marker lines, so a group change rewrites FIND only when that flips.
+-- Whether the last body carries the marker line, so a group change rewrites FIND only when that flips.
 local marking
 
 local function buildFindBody()
     local ordered = {}
     for slot = 1, MAX_TARGETS do
-        local entry = ns.targets[slot]
-        if entry then ordered[#ordered + 1] = { name = entry.name, slot = slot } end
+        if ns.targets[slot] then ordered[#ordered + 1] = ns.targets[slot] end
     end
 
     marking = TargetFinderCharDB.raidMarkers == true and ns.CanMark()
@@ -72,13 +41,17 @@ local function buildFindBody()
     -- A comment-only body, so pressing FIND with an empty list leaves the current target alone instead of clearing it.
     if #ordered == 0 then return "// " .. ns.ADDON_NAME .. " - no targets" end
 
-    if marking then
-        for marked = #ordered, 1, -1 do
-            local body = markedBody(ordered, marked)
-            if #body <= MACRO_LIMIT then return body end
-        end
+    local closing = (marking and "\n/tm !" .. ns.FIND_MARKER or "") .. TAIL
+    local lines = {}
+    for i = #ordered, 1, -1 do
+        lines[#lines + 1] = "/targetexact " .. ordered[i].name
     end
-    return plainBody(ordered)
+    local content = table.concat(lines, "\n")
+    while #content > MACRO_LIMIT - #closing and #lines > 1 do
+        table.remove(lines, 1)
+        content = table.concat(lines, "\n")
+    end
+    return content .. closing
 end
 
 -- EditMacro and CreateMacro are blocked in combat, so a write made then is stashed and replayed on PLAYER_REGEN_ENABLED. The on-screen red notice fires once per combat session and only for the player's own changes, since quest updates land in nearly every fight.
