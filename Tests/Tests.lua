@@ -1140,9 +1140,12 @@ check("the bare slash command toggles the panel", panel.shown ~= before)
 W.chat = {}
 SlashCmdList.TARGETFINDER(" Minimap ")
 check("/tf minimap hides the minimap button", TargetFinderDB.minimap.hide == true and W.minimapShown == false)
+check("hiding prints the way back", #W.chat == 1 and W.chat[1] == NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]")
+      .. ": Minimap button hidden. Type /tf minimap to show it again.", table.concat(W.chat, " / "))
+W.chat = {}
 SlashCmdList.TARGETFINDER("minimap")
 check("a second /tf minimap shows it", TargetFinderDB.minimap.hide == false and W.minimapShown == true)
-check("the button itself is the answer, so no chat line", #W.chat == 0, table.concat(W.chat, " / "))
+check("showing prints nothing, since the button is the answer", #W.chat == 0, table.concat(W.chat, " / "))
 W.macroOrder = {}; W.macros = {}
 ns.WipeTargets()
 SlashCmdList.TARGETFINDER("add Hogger the Great")

@@ -74,8 +74,10 @@ SlashCmdList.TARGETFINDER = function(message)
     elseif command == "intro" then
         ns.ReplayIntro()
     elseif command == "minimap" then
-        -- Only the minimap button hides; the addon menu entry stays as the way back.
-        ns.SetMinimapShown(ns.db.minimap.hide)
+        -- Only the minimap button hides; the addon menu entry stays as the way back. Hiding prints the way back, showing prints nothing, since the button is the feedback.
+        local show = ns.db.minimap.hide
+        ns.SetMinimapShown(show)
+        if not show then ns.Print("Minimap button hidden. Type /tf minimap to show it again.") end
     else
         ns.Print("Unknown command. Type /tf help for the list.")
     end
