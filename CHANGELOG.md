@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.0](https://github.com/miyankooo/TargetFinder/compare/v1.1.0...v1.2.0) (2026-11-09)
+
+
+### Features
+
+* An empty list shows what to type in its first row ([8d649e0](https://github.com/miyankooo/TargetFinder/commit/8d649e053627174273e458477a9c475c13a30d40))
+* Apply Pings makes FIND ping its target ([ea11ff5](https://github.com/miyankooo/TargetFinder/commit/ea11ff5a80358cbdbfd946f01e85206baf085231))
+* The name boxes, Add and the remove button explain themselves in tooltips ([6fcd9f1](https://github.com/miyankooo/TargetFinder/commit/6fcd9f1863d5c16560a200e9012b39ba3e1304ac))
+
+
+### Bug Fixes
+
+* A tip brought back by /tf intro stays until you close it ([62e11bd](https://github.com/miyankooo/TargetFinder/commit/62e11bd188a47fd5a5344266130989ea0f90b6df))
+* Chat lines show the addon name in gold ([1bef310](https://github.com/miyankooo/TargetFinder/commit/1bef310ee3c402df888f03447534c7a869845ed4))
+* Clearer welcome line, /tf help and macro book tip ([25dbad3](https://github.com/miyankooo/TargetFinder/commit/25dbad31367f8f0bdd1adaa3d8c6f3e3ff155bb0))
+* Hiding the minimap button with /tf minimap says how to bring it back ([b4970c1](https://github.com/miyankooo/TargetFinder/commit/b4970c1c17edd129f48239e0c3abb64739370d94))
+* The red combat notice no longer repeats the addon name ([bf27e80](https://github.com/miyankooo/TargetFinder/commit/bf27e8046086a33854a9f602e5d6f414b941bd35))
+* The welcome line names the Target Finder window ([ff71199](https://github.com/miyankooo/TargetFinder/commit/ff71199b22cebca6aa7f31164631ac3d550bdf38))
+
 ## [1.1.0](https://github.com/miyankooo/TargetFinder/compare/v1.0.0...v1.1.0) (2026-11-08)
 
 
