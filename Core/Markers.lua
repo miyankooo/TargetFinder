@@ -16,3 +16,9 @@ function ns.SetRaidMarkers(on)
     TargetFinderCharDB.raidMarkers = on
     ns.WriteFinderMacro()
 end
+
+-- The Apply Pings box: FIND is rewritten at once with or without its /ping line (Core/Macro.lua). Anyone may ping, so no group check applies.
+function ns.SetPings(on)
+    TargetFinderCharDB.pings = on
+    ns.WriteFinderMacro()
+end

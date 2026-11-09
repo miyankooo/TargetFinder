@@ -23,9 +23,12 @@ local function setMacro(name, icon, body)
     return ok, ok and not existed
 end
 
--- FIND is RestedXP's targeting macro (RXPGuides v4.11.34 Targeting.lua:176-266, UpdateMacro), line for line: one /targetexact per row in REVERSE, so row 1 is the last line and wins; then RestedXP's /tm !<marker> on Forever, whose "!" leaves the marker on a unit that already carries it (SlashCommands.lua:1458-1464); then /targetlasttarget [dead], which steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. Like RestedXP, the lowest rows drop off the top until the targeting lines fit what the two closing lines leave of the 255-character cap.
+-- FIND is RestedXP's targeting macro (RXPGuides v4.11.34 Targeting.lua:176-266, UpdateMacro), line for line: one /targetexact per row in REVERSE, so row 1 is the last line and wins; then RestedXP's /tm !<marker> on Forever, whose "!" leaves the marker on a unit that already carries it (SlashCommands.lua:1458-1464); then /targetlasttarget [dead], which steps back from a corpse to the match before it. A line that finds nothing leaves the target as it was, so FIND never clears it and never grabs an off-list mob. Like RestedXP, the lowest rows drop off the top until the targeting lines fit what the closing lines leave of the 255-character cap.
 -- Addons may not mark on Forever (SetRaidTarget raised ADDON_ACTION_FORBIDDEN in game on 2026-11-08, and RestedXP's UpdateMarker returns early there), so /tm, Blizzard's secure path, is the only way. The marker line is written only while Apply Raid Markers is ticked and the player may mark.
 local TAIL = "\n/targetlasttarget [dead]"
+
+-- Apply Pings closes FIND with Blizzard's /ping, its secure path, since C_Ping.SendMacroPing is restricted for addons (PingManagerDocumentation.lua:53-56). It carries no ping type, so the game picks the ping as it does for a tap of the ping key (Blizzard_PingManager.lua:181 sends nil). It comes after the corpse guard, so it pings the unit FIND ends on. The conditions skip it without a living target, because a /ping whose conditions fail sends nothing, where a bare one pings the ground (Mainline/SlashCommandsOverrides.lua:55-75).
+local PING = "\n/ping [@target,exists,nodead]"
 
 -- Whether the last body carries the marker line, so a group change rewrites FIND only when that flips.
 local marking
@@ -42,6 +45,7 @@ local function buildFindBody()
     if #ordered == 0 then return "// " .. ns.title .. " - no targets" end
 
     local closing = (marking and "\n/tm !" .. ns.FIND_MARKER or "") .. TAIL
+        .. (TargetFinderCharDB.pings == true and PING or "")
     local lines = {}
     for i = #ordered, 1, -1 do
         lines[#lines + 1] = "/targetexact " .. ordered[i].name

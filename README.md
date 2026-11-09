@@ -2,7 +2,7 @@
 
 # Target Finder
 
-A WoW Forever addon that gives you one FIND button to target and raid-mark the NPCs your quests need, plus any NPC or player you add. Works with Questie when it is installed.
+A WoW Forever addon that gives you one FIND button to target, raid-mark and ping the NPCs your quests need, plus any NPC or player you add. Works with Questie when it is installed.
 
 ## Features
 
@@ -10,6 +10,7 @@ A WoW Forever addon that gives you one FIND button to target and raid-mark the N
 - Target Finder creates the FIND macro for you and keeps it up to date.
 - Track and Untrack sit at the top of the right-click menu on NPC and player portraits.
 - Apply Raid Markers: FIND marks the NPC it targets with a cross, as RestedXP's macro does.
+- Apply Pings: FIND also pings the NPC it targets as your ping key does, so your group sees it. Off until you tick it.
 - Up to eight names, with row 1 first. Drag a row's number to change the order. Names you add are never replaced.
 - With Questie, Auto Apply Quest NPCs fills free rows with the nearby NPCs you need to kill, loot or talk to. They update when you accept, turn in or abandon a quest and when you change zones.
 - With Questie, names are suggested as you type.
@@ -21,7 +22,7 @@ A WoW Forever addon that gives you one FIND button to target and raid-mark the N
 3. Target Finder creates your FIND macro and opens the macro book on it. Drag the glowing icon to an action bar, or drag the icon in the window's top-left corner.
 4. Press FIND to target the first name in range.
 5. Right-click the minimap button or type `/tf refresh` to update the quest NPCs where you stand.
-6. Untick Auto Apply Quest NPCs to keep only the names you add, or Apply Raid Markers to target without marking.
+6. Untick Auto Apply Quest NPCs to keep only the names you add, or Apply Raid Markers to target without marking. Tick Apply Pings to ping each target too.
 
 Commands: `/tf`, `/tf add`, `/tf refresh`, `/tf minimap`, `/tf intro` and `/tf help`.
 

@@ -97,6 +97,7 @@ check("minimap defaults created", TargetFinderDB.minimap.minimapPos == 215)
 check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
 check("Auto Apply Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
 check("Apply Raid Markers starts on", TargetFinderCharDB.raidMarkers == true)
+check("Apply Pings starts off", TargetFinderCharDB.pings == false)
 -- the plain FIND body is the subject until the marker section turns this back on
 TargetFinderCharDB.raidMarkers = false
 check("unit menus registered", W.menuHooks["MENU_UNIT_TARGET"] ~= nil)
@@ -218,6 +219,37 @@ check("a group change never creates FIND", W.macros["FIND"] == nil)
 W.group = nil
 groupEvent()
 TargetFinderCharDB.raidMarkers = false
+
+section("Apply Pings closes FIND with the ping key's own ping")
+local PING_LINE = "\n/ping [@target,exists,nodead]"
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta")
+ns.WriteFinderMacro()
+check("off, FIND has no ping line", W.macros["FIND"].body:find("/ping", 1, true) == nil, W.macros["FIND"].body)
+ns.SetPings(true)
+check("ticking adds the ping after the corpse guard, so it lands on the unit FIND ends on",
+      TargetFinderCharDB.pings == true and W.macros["FIND"].body == "/targetexact Beta\n/targetexact Alpha" .. TAIL .. PING_LINE,
+      (W.macros["FIND"].body:gsub("\n", "|")))
+TargetFinderCharDB.raidMarkers = true
+ns.WriteFinderMacro()
+local closingLines = "\n/tm !7" .. TAIL .. PING_LINE
+check("with markers: the cross, the corpse guard, then the ping", W.macros["FIND"].body:sub(-#closingLines) == closingLines,
+      (W.macros["FIND"].body:gsub("\n", "|")))
+ns.WipeTargets()
+for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Name%d"):format(i) .. string.rep("x", 28)) end
+ns.WriteFinderMacro()
+local pinged = W.macros["FIND"].body
+check("a long list with every closing line stays within the cap", #pinged <= 255, #pinged)
+check("the closing lines always stay", pinged:sub(-#closingLines) == closingLines, (pinged:gsub("\n", "|")))
+check("row 1 survives and the lowest rows drop first", pinged:match("Name1") ~= nil and pinged:match("Name8") == nil)
+ns.WipeTargets(); ns.WriteFinderMacro()
+check("an empty list stays a comment", W.macros["FIND"].body:sub(1, 2) == "//", W.macros["FIND"].body)
+ns.targets[1] = ns.MakeEntry("Alpha")
+ns.SetPings(false)
+check("unticking drops the ping line", TargetFinderCharDB.pings == false and W.macros["FIND"].body:find("/ping", 1, true) == nil,
+      W.macros["FIND"].body)
+TargetFinderCharDB.raidMarkers = false
+ns.WipeTargets(); ns.WriteFinderMacro()
 
 section("secret identity guard")
 W.units = { target = { name = "Someone", player = true, friend = true, party = true, secret = true } }
@@ -871,6 +903,29 @@ markerBox.scripts.OnEnter(markerBox)
 check("without rights, it is an error line", W.tooltip[3] == "error:In a group, markers need leader or assistant rights.", W.tooltip[3])
 W.group = nil
 TargetFinderCharDB.raidMarkers = false
+
+section("the Apply Pings box")
+local pingBox = panel.pingBox
+check("a native checkbox", pingBox and pingBox.template == "CheckboxWithLabelTemplate")
+check("it is labelled", pingBox.Text.text == "Apply Pings", pingBox.Text.text)
+local pingAnchor = pingBox.points[1]
+check("it follows the marker box's label one padding step on", pingAnchor.point == "LEFT" and pingAnchor.rel == markerBox.Text
+      and pingAnchor.relPoint == "RIGHT" and pingAnchor.x == PADDING and pingAnchor.y == 0)
+check("labels that fit keep the window at its base width", panel.width == 400, panel.width)
+TargetFinderCharDB.pings = true
+ns.RefreshPanel()
+check("it mirrors the setting", pingBox.checked == true)
+pingBox:SetChecked(false)
+pingBox.scripts.OnClick(pingBox)
+check("unticking saves the choice", TargetFinderCharDB.pings == false)
+pingBox:SetChecked(true)
+pingBox.scripts.OnClick(pingBox)
+check("ticking saves it again", TargetFinderCharDB.pings == true)
+pingBox.scripts.OnEnter(pingBox)
+check("the tooltip says FIND pings its pick", W.tooltip[1] == "title:Apply Pings"
+      and W.tooltip[2] == "normal:FIND pings the NPC it targets as your ping key does, so your group sees it too."
+      and #W.tooltip == 2, table.concat(W.tooltip, " / "))
+TargetFinderCharDB.pings = false
 
 section("FIND comes from the window icon")
 local dragIcon

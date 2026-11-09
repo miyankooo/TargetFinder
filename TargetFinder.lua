@@ -25,6 +25,9 @@ local function initSavedVars()
     -- Listed NPCs get their row's raid marker unless the player turned the box off.
     if type(TargetFinderCharDB.raidMarkers) ~= "boolean" then TargetFinderCharDB.raidMarkers = true end
 
+    -- Pings reach the whole group on every FIND press, so they wait until the player ticks the box.
+    if type(TargetFinderCharDB.pings) ~= "boolean" then TargetFinderCharDB.pings = false end
+
     -- Adopt validates and rebuilds the list, then the saved variable is pointed at the live table so later mutations persist with no explicit save step.
     TargetFinderCharDB.targets = ns.AdoptSaved(TargetFinderCharDB.targets)
 end

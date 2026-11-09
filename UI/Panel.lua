@@ -190,7 +190,7 @@ end
 -- A tool window with a list and a row of actions is the job Blizzard gives ButtonFrameTemplate (Mainline/SharedUIPanelTemplates.xml:711), which CreateWindow builds. The dialog chrome is for small popups, which eight editable rows are not.
 local PANEL_NAME = "TargetFinderFrame"
 
--- Wide enough that each line of the attic help fits beside the portrait.
+-- Wide enough that each line of the attic help fits beside the portrait. The bar's checkboxes can widen it (fitBarWidth).
 local PANEL_WIDTH = 400
 
 -- Editable rows sit one gap apart, so the 20px edit boxes never touch.
@@ -217,6 +217,9 @@ local QUEST_REFRESH = "Right-click the minimap button or type /tf refresh to upd
 local MARKER_LABEL = "Apply Raid Markers"
 local MARKER_HELP = "FIND marks the NPC it targets with a cross, as RestedXP's targeting macro does."
 local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
+
+local PING_LABEL = "Apply Pings"
+local PING_HELP = "FIND pings the NPC it targets as your ping key does, so your group sees it too."
 
 -- The template's 26px button bar fits a 22px button, which leaves a 24px checkbox no room. The bar grows to one gap above and below the checkboxes, measured from the frame's bottom border, MagicButton_OnLoad's 4px inset (Mainline/SharedUIPanelTemplates.lua:34). The checkboxes start at the rows' left edge.
 local BAR_BORDER = 4
@@ -472,6 +475,30 @@ local function buildMarkerBox(frame)
     frame.markerBox = box
 end
 
+local function fillPingTooltip(tooltip)
+    GameTooltip_SetTitle(tooltip, PING_LABEL)
+    GameTooltip_AddNormalLine(tooltip, PING_HELP)
+end
+
+-- The third bar control follows the second the same way.
+local function buildPingBox(frame)
+    local box = CreateCheckbox(frame, PING_LABEL)
+    box:SetPoint("LEFT", frame.markerBox.Text, "RIGHT", PADDING, 0)
+    box:SetScript("OnClick", function(self) ns.SetPings(self:GetChecked()) end)
+    AttachTooltip(box, fillPingTooltip)
+    frame.pingBox = box
+end
+
+-- The bar's checkboxes share one line, so the window grows past PANEL_WIDTH when their labels need the room, keeping the rows' margin on the right. Each box is one row square with its label one tight step on, as CreateCheckbox lays it out.
+local function fitBarWidth(frame, boxes)
+    local width = BAR_LEFT + PADDING - PANEL_INSET_RIGHT_OFFSET
+    for i, box in ipairs(boxes) do
+        if i > 1 then width = width + PADDING end
+        width = width + ROW + TIGHT + box.Text:GetStringWidth()
+    end
+    frame:SetWidth(math.max(PANEL_WIDTH, Snap(width)))
+end
+
 -- The template's 60px attic, the padded rows and the grown bar add up on the grid; the snap keeps it there if a size changes.
 local function panelHeight()
     local contentHeight = PADDING * 2 + MAX_TARGETS * ROW_PITCH - GAP
@@ -511,6 +538,8 @@ local function buildPanel()
 
     buildQuestBox(panel)
     buildMarkerBox(panel)
+    buildPingBox(panel)
+    fitBarWidth(panel, { panel.questBox, panel.markerBox, panel.pingBox })
     return panel
 end
 
@@ -524,6 +553,7 @@ function ns.RefreshPanel()
     panel.questBox:SetEnabled(ready)
     panel.questBox.Text:SetFontObject(ready and GameFontHighlight or GameFontDisable)
     panel.markerBox:SetChecked(TargetFinderCharDB.raidMarkers)
+    panel.pingBox:SetChecked(TargetFinderCharDB.pings)
 
     panel.rows[1].input.Instructions:SetText(next(ns.targets) == nil and EMPTY_HINT or "")
     local icons = ns.QuestieKindIcons()
