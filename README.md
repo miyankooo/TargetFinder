@@ -2,7 +2,7 @@
 
 # Target Finder
 
-A WoW Forever addon that gives you one FIND button to target, raid-mark and ping the NPCs your quests need, plus any NPC or player you add. Works with Questie when it is installed.
+A WoW Forever addon that gives you one FIND button to target, raid-mark and ping the NPCs your quests need, plus any NPC or player you add. Quest NPCs come from QuestieDB, Questie's quest database, which the CurseForge app installs with Target Finder. Questie itself is not needed.
 
 ## Features
 
@@ -12,8 +12,8 @@ A WoW Forever addon that gives you one FIND button to target, raid-mark and ping
 - Apply Raid Markers: FIND marks the NPC it targets with a cross, as RestedXP's macro does.
 - Apply Pings: FIND also pings the NPC it targets as your ping key does, so your group sees it. Off until you tick it.
 - Up to eight names, with row 1 first. Drag a row's number to change the order. Names you add are never replaced.
-- With Questie, Auto Apply Quest NPCs fills free rows with the nearby NPCs you need to kill, loot or talk to. They update when you accept, turn in or abandon a quest and when you change zones.
-- With Questie, names are suggested as you type.
+- Auto Apply Quest NPCs fills free rows with the nearby NPCs you need to kill, loot or talk to. They update when you accept, turn in or abandon a quest and when you change zones.
+- Quest and NPC names are suggested as you type.
 
 ## Usage
 
