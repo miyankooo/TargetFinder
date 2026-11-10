@@ -9,7 +9,7 @@ local targets = {}
 
 ns.targets = targets
 
--- quest marks an entry that came from the quest log, so it may drop off once Questie counts it done. kind picks its row icon. Typed entries leave both nil and are never dropped.
+-- quest marks an entry that came from the quest log, so it may drop off once its objective is done. kind picks its row icon. Typed entries leave both nil and are never dropped.
 function ns.MakeEntry(name, quest, kind)
     local fromQuest = quest == true or nil
     return { name = name, quest = fromQuest, kind = fromQuest and KINDS[kind] and kind or nil }

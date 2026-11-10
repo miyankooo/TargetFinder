@@ -1,186 +1,167 @@
 local _, ns = ...
 
--- Questie 12 with the QuestieDB addon is the only quest data source. Names, spawns, drops, givers and objective progress all come from Questie; native APIs only supply the player's map position and the units on screen. Every Questie internal is type-checked and each public entry point runs protected, so a changed internal ends in one chat line instead of a Lua error. The rest of the addon only ever calls the ns.* functions below.
+-- QuestieDB, the standalone database addon Questie itself is built on, is the only quest data source: quest names, objectives and turn-in NPCs, NPC names and spawns, and item drops, all through its public LibQuestieDB API. The game's own quest log says which quests the player holds and how far each objective is. Questie itself is not needed. Each public entry point runs protected, so a changed field ends in one chat line instead of a Lua error. The rest of the addon only ever calls the ns.* functions below.
+
+-- The LibQuestieDB contract this file is written against. RequireContract accepts a range (QuestieDB src/api.lua:94-110), so an additive QuestieDB release keeps working and an incompatible one reads as unsupported.
+local CONTRACT = 4
+
+local EMPTY = {}
 
 local npcNames
 local npcNamesLower
 local readFailed = false
 
--- Questie is another addon's private code, so a field that changed shape must not raise on every keystroke. The first failure is reported once with its message so it can be passed on; later ones stay quiet.
+-- A field that changed shape must not raise on every keystroke. The first failure is reported once with its message so it can be passed on; later ones stay quiet.
 local function guarded(fn, ...)
     local ok, result = pcall(fn, ...)
     if ok then return true, result end
     if not readFailed then
         readFailed = true
-        ns.Print("Could not read Questie data (" .. tostring(result) .. "). Updating Questie or Target Finder should fix it.")
+        ns.Print("Could not read QuestieDB data (" .. tostring(result) .. "). Updating QuestieDB or Target Finder should fix it.")
     end
     return false, nil
 end
 
--- QuestieLoader:ImportModule creates an empty module for a name it does not know instead of returning nil, so a table coming back proves nothing; callers still check the fields they use.
-local function questieModule(name)
-    local loader = _G.QuestieLoader
-    if type(loader) ~= "table" or type(loader.ImportModule) ~= "function" then return nil end
-    local module = loader:ImportModule(name)
-    if type(module) ~= "table" then return nil end
-    return module
+-- ipairs over a field that may be missing.
+local function each(list)
+    return ipairs(type(list) == "table" and list or EMPTY)
 end
 
--- Questie.API is Questie's stable public contract (Public/README.md). It is missing when Questie is absent, or when a second Questie install replaced the addon table with an empty one.
-local function questieApi()
-    local questie = _G.Questie
-    local api = type(questie) == "table" and questie.API
-    if type(api) ~= "table" then return nil end
-    return api
+local function isReader(entity)
+    return type(entity) == "table" and type(entity.Get) == "function" and type(entity.GetAllIds) == "function"
 end
 
--- The database module is private, so each field read below is type-checked. A mismatch means a Questie version this code does not know.
-local function databaseModule()
-    local db = questieModule("QuestieDB")
-    if not db then return nil end
-    if type(db.QueryNPCSingle) ~= "function" then return nil end
-    if type(db.QueryQuestSingle) ~= "function" then return nil end
-    if type(db.QueryItemSingle) ~= "function" then return nil end
-    if type(db.NPCPointers) ~= "table" then return nil end
-    return db
+-- "absent" when QuestieDB did not load, "unsupported" when it speaks another contract or lacks a reader this file calls, else "ready" and the library.
+local function libraryStatus()
+    local lib = _G.LibQuestieDB
+    if type(lib) ~= "table" then return "absent" end
+    if type(lib.RequireContract) ~= "function" or not lib.RequireContract(CONTRACT) then return "unsupported" end
+    if not (isReader(lib.Quest) and isReader(lib.Npc) and isReader(lib.Item)) then return "unsupported" end
+    return "ready", lib
 end
 
--- Questie sets API.isReady as the last step of its init (QuestieInit.lua:381), after its database and quest log are built, so nothing is read before then. A failed start sets Questie.started to false and leaves isReady false for good (QuestieInit.lua:128-129).
-local function questieStatus()
-    local api = questieApi()
-    if not api then return "absent" end
-    if _G.Questie.started == false then return "failed" end
-    if api.isReady ~= true then return "loading" end
-    if not databaseModule() then return "unsupported" end
-    return "ready"
+local function questDB()
+    local status, lib = libraryStatus()
+    if status == "ready" then return lib end
+    return nil
 end
 
-local function questieDB()
-    local api = questieApi()
-    if not api or api.isReady ~= true then return nil end
-    return databaseModule()
-end
-
-function ns.QuestieReady()
-    return questieStatus() == "ready"
+function ns.QuestDataReady()
+    return (libraryStatus()) == "ready"
 end
 
 -- Each state that keeps the quest features off needs different advice.
-local QUESTIE_EXCUSES = {
-    absent = "Questie is not loaded.",
-    loading = "Questie is still loading.",
-    failed = "Questie failed to start. Check Questie's own error message.",
-    unsupported = "This Questie version is not supported.",
+local EXCUSES = {
+    absent = "QuestieDB is not loaded.",
+    unsupported = "This QuestieDB version is not supported.",
 }
 
-function ns.QuestieExcuse()
-    return QUESTIE_EXCUSES[questieStatus()]
+function ns.QuestDataExcuse()
+    return EXCUSES[(libraryStatus())]
 end
 
--- Questie fills usedIcons from its own settings during OnInitialize, so the table is read on every call and follows an icon change made in Questie's options.
-function ns.QuestieKindIcons()
-    local Q = _G.Questie
-    local used = type(Q) == "table" and Q.usedIcons
-    if type(used) ~= "table" then return nil end
-    return {
-        [ns.KIND_KILL] = used[Q.ICON_TYPE_SLAY],
-        [ns.KIND_DROP] = used[Q.ICON_TYPE_LOOT],
-        [ns.KIND_TURNIN] = used[Q.ICON_TYPE_COMPLETE],
-    }
+-- The quests in the player's log. The log API lists only the quests under expanded headers (Blizzard's own quest search expands every header first, QuestMapFrame.lua:162-175), so the set is seeded by asking C_QuestLog.IsOnQuest about every quest QuestieDB knows, then kept by QUEST_ACCEPTED and QUEST_REMOVED. A loading screen drops it, so the next read seeds it afresh.
+local activeQuests
+
+local function questLog(lib)
+    if not activeQuests then
+        activeQuests = {}
+        for _, questId in each(lib.Quest.GetAllIds()) do
+            if C_QuestLog.IsOnQuest(questId) then activeQuests[questId] = true end
+        end
+    end
+    return activeQuests
 end
 
--- Questie replaces currentQuestlog with a new table on every full quest-log scan, so it is read fresh each time and never cached.
-local function questLog()
-    local player = questieModule("QuestiePlayer")
-    local log = player and player.currentQuestlog
-    if type(log) ~= "table" then return nil end
-    return log
+-- A quest's objectives in the order the game's quest log lists them, so entry i belongs to the game's objective i. QuestieDB stores them by type; this is Questie's order (Database/QuestieDB.lua:1606-1738): creatures, objects, items, reputation, kill credit, spells, then the scripted event, each type moved to the front for the quests LibQuestieDB.ObjectiveFirst names. Only kill targets and items lead to an NPC; the other types just hold their place.
+local function orderedObjectives(lib, questId)
+    local list = {}
+    local first = type(lib.ObjectiveFirst) == "table" and lib.ObjectiveFirst or EMPTY
+    local function add(entry, front)
+        if type(front) == "table" and front[questId] then
+            table.insert(list, 1, entry)
+        else
+            list[#list + 1] = entry
+        end
+    end
+    local raw = lib.Quest.Get(questId, "objectives")
+    if type(raw) == "table" then
+        for _, creature in each(raw[1]) do add({ ids = { creature[1] } }) end
+        for _ in each(raw[2]) do add({}, first.objectObjectiveFirst) end
+        for _, item in each(raw[3]) do add({ item = item[1] }, first.itemObjectiveFirst) end
+        if raw[4] then add({}) end
+        for _, credit in each(raw[5]) do add({ ids = credit[1] }, first.killCreditObjectiveFirst) end
+        for _ in each(raw[6]) do add({}, first.spellObjectiveFirst) end
+    end
+    if lib.Quest.Get(questId, "triggerEnd") then add({}, first.eventObjectiveFirst) end
+    return list
 end
 
--- Log entries are Questie's live quest objects. Questie stores the bare quest id instead when it could not build one, so that case falls back to the database object, which has objective data but no progress.
-local function questObject(db, log, questId)
-    local entry = log and log[questId]
-    if type(entry) == "table" then return entry end
-    if type(db.GetQuest) ~= "function" then return nil end
-    local quest = db.GetQuest(questId)
-    if type(quest) ~= "table" then return nil end
-    return quest
+local function rowDone(row)
+    return type(row) == "table" and row.finished == true
 end
 
--- Questie's own progress: quest.Objectives[i] is built from ObjectiveData[i] and its Completed flag is what Questie uses to drop that objective's map icons. A missing entry counts as open, so a quest Questie has not scanned yet still offers its NPCs.
-local function objectiveDone(quest, index)
-    local objectives = quest.Objectives
-    local objective = type(objectives) == "table" and objectives[index]
-    return type(objective) == "table" and objective.Completed == true
+-- The game's own completion flag, or every objective row done before the flag catches up. A quest QuestieDB lists no objectives for, a delivery or talk-to quest, is ready from the start.
+local function readyToTurnIn(questId, objectives, rows)
+    if C_QuestLog.IsComplete(questId) then return true end
+    if #objectives == 0 then return true end
+    if #rows == 0 then return false end
+    for _, row in ipairs(rows) do
+        if not rowDone(row) then return false end
+    end
+    return true
 end
 
--- Questie's two completion signals: IsComplete reads its quest-log cache, and isComplete is the flag it sets itself when every objective is done before the log catches up.
-local function readyToTurnIn(db, quest, questId)
-    if quest and quest.isComplete == true then return true end
-    return type(db.IsComplete) == "function" and db.IsComplete(questId) == 1
-end
-
-local function npcName(db, npcId)
+local function npcName(lib, npcId)
     if not npcId then return nil end
-    local name = db.QueryNPCSingle(npcId, "name")
+    local name = lib.Npc.Get(npcId, "name")
     if type(name) ~= "string" or name == "" then return nil end
     return name
 end
 
--- Kill targets and item droppers for every objective Questie still counts as open.
-local function forEachObjectiveNpc(db, quest, visit)
-    local objectiveData = quest and quest.ObjectiveData
-    if type(objectiveData) ~= "table" then return end
-    for index, data in ipairs(objectiveData) do
-        if type(data) == "table" and not objectiveDone(quest, index) then
-            if data.Type == "monster" and data.Id then
-                visit(data.Id, ns.KIND_KILL)
-            elseif data.Type == "killcredit" and type(data.IdList) == "table" then
-                for _, id in ipairs(data.IdList) do visit(id, ns.KIND_KILL) end
-            elseif data.Type == "item" and data.Id then
+-- Kill targets and item droppers for every objective the game still counts as open. A missing row counts as open, so a quest whose objectives have not loaded yet still offers its NPCs.
+local function forEachObjectiveNpc(lib, objectives, rows, visit)
+    for index, objective in ipairs(objectives) do
+        if not rowDone(rows[index]) then
+            for _, id in each(objective.ids) do visit(id, ns.KIND_KILL) end
+            if objective.item then
                 -- An item can also come out of a container item, such as a crate, so the container's droppers count too, one level deep.
-                local sources = { data.Id }
-                local containers = db.QueryItemSingle(data.Id, "itemDrops")
-                if type(containers) == "table" then
-                    for _, containerId in ipairs(containers) do sources[#sources + 1] = containerId end
-                end
+                local sources = { objective.item }
+                for _, containerId in each(lib.Item.Get(objective.item, "itemDrops")) do sources[#sources + 1] = containerId end
                 for _, itemId in ipairs(sources) do
-                    local droppers = db.QueryItemSingle(itemId, "npcDrops")
-                    if type(droppers) == "table" then
-                        for _, dropperId in ipairs(droppers) do visit(dropperId, ns.KIND_DROP) end
-                    end
+                    for _, dropperId in each(lib.Item.Get(itemId, "npcDrops")) do visit(dropperId, ns.KIND_DROP) end
                 end
             end
         end
     end
 end
 
--- finishedBy is { npcIds, objectIds, itemIds }; only the NPC list is something /target can reach.
-local function forEachTurnInNpc(db, questId, visit)
-    local finishers = db.QueryQuestSingle(questId, "finishedBy")
-    local npcs = type(finishers) == "table" and finishers[1]
-    if type(npcs) ~= "table" then return end
-    for _, id in ipairs(npcs) do visit(id, ns.KIND_TURNIN) end
+-- finishedBy is { npcIds, objectIds }; only the NPC list is something /target can reach.
+local function forEachTurnInNpc(lib, questId, visit)
+    local finishers = lib.Quest.Get(questId, "finishedBy")
+    for _, id in each(type(finishers) == "table" and finishers[1]) do visit(id, ns.KIND_TURNIN) end
 end
 
--- One rule for every quest NPC: the turn-in NPC once Questie counts the quest complete, otherwise the NPCs of its open objectives. The quest giver is moot once the quest is in the log.
-local function forEachQuestNpc(db, log, questId, visit)
-    local quest = questObject(db, log, questId)
-    if readyToTurnIn(db, quest, questId) then
-        forEachTurnInNpc(db, questId, visit)
+-- One rule for every quest NPC: the turn-in NPC once the quest is ready to hand in, otherwise the NPCs of its open objectives. The quest giver is moot once the quest is in the log.
+local function forEachQuestNpc(lib, questId, visit)
+    local objectives = orderedObjectives(lib, questId)
+    local rows = C_QuestLog.GetQuestObjectives(questId)
+    if type(rows) ~= "table" then rows = EMPTY end
+    if readyToTurnIn(questId, objectives, rows) then
+        forEachTurnInNpc(lib, questId, visit)
     else
-        forEachObjectiveNpc(db, quest, visit)
+        forEachObjectiveNpc(lib, objectives, rows, visit)
     end
 end
 
 -- Keeps each NPC name once with the highest-priority kind it was seen with, then sorts by kind with first-seen order as the tiebreak.
-local function newNpcCollector(db)
+local function newNpcCollector(lib)
     local seen = {}
     local entries = {}
     local collector = {}
 
     function collector.add(npcId, kind, questName)
-        local name = npcName(db, npcId)
+        local name = npcName(lib, npcId)
         if not name then return end
         local existing = seen[name]
         if not existing then
@@ -204,13 +185,13 @@ local function newNpcCollector(db)
     return collector
 end
 
--- One pass over every NPC name, a stall QuestieDB says to take where it is invisible and never on a hover path (QuestieDB src/read/shared.lua:473-476). A keystroke is no better, so it runs once Questie is ready; the first search builds it only if that has not happened yet.
-local function buildNpcNameIndex(db)
-    if npcNames then return true end
+-- One pass over every NPC name, a stall QuestieDB says to take where it is invisible and never on a hover path (QuestieDB src/read/shared.lua:473-476). A keystroke is no better, so it runs at login under the loading screen; the first search builds it only if that has not happened yet.
+local function buildNpcNameIndex(lib)
+    if npcNames then return end
     local seen = {}
     local list = {}
-    for npcId in pairs(db.NPCPointers) do
-        local name = npcName(db, npcId)
+    for _, npcId in each(lib.Npc.GetAllIds()) do
+        local name = npcName(lib, npcId)
         if name and not seen[name] then
             seen[name] = true
             list[#list + 1] = name
@@ -225,10 +206,10 @@ local function buildNpcNameIndex(db)
 end
 
 local function questNpcs(questId)
-    local db = questieDB()
-    if not db then return {} end
-    local collector = newNpcCollector(db)
-    forEachQuestNpc(db, questLog(), questId, collector.add)
+    local lib = questDB()
+    if not lib then return {} end
+    local collector = newNpcCollector(lib)
+    forEachQuestNpc(lib, questId, collector.add)
     return collector.sorted()
 end
 
@@ -239,30 +220,59 @@ function ns.QuestNpcs(questId)
 end
 
 -- Every NPC across the whole quest log, used to tag search results with their quest.
-local function questLogNpcNames(db, log)
-    local collector = newNpcCollector(db)
+local function questLogNpcNames(lib, log)
+    local collector = newNpcCollector(lib)
     for questId in pairs(log) do
-        local questName = db.QueryQuestSingle(questId, "name")
-        forEachQuestNpc(db, log, questId, function(npcId, kind)
+        local questName = lib.Quest.Get(questId, "name")
+        forEachQuestNpc(lib, questId, function(npcId, kind)
             collector.add(npcId, kind, questName)
         end)
     end
     return collector.sorted()
 end
 
--- The player's position in Questie's zone ids. ZoneDB:GetAreaIdByUiMapId raises for a map it cannot place, such as an instance or a map newer than Questie, hence the pcall.
-local function playerWhere()
+-- QuestieDB's zone tables, decoded once: the uiMapID-to-area and subzone-to-parent maps Questie builds the same way in its ZoneDB (Database/Zones/zoneDB.lua:65-100). Each ships as a Lua source string with an override table that wins. The chunks run in an empty environment, since they are plain table literals.
+local zones
+
+local function decoded(source)
+    if type(source) == "table" then return source end
+    if type(source) ~= "string" then return EMPTY end
+    local chunk = loadstring(source)
+    if not chunk then return EMPTY end
+    setfenv(chunk, {})
+    local ok, result = pcall(chunk)
+    if ok and type(result) == "table" then return result end
+    return EMPTY
+end
+
+local function merged(base, override)
+    local map = {}
+    for key, value in pairs(decoded(base)) do map[key] = value end
+    for key, value in pairs(decoded(override)) do map[key] = value end
+    return map
+end
+
+local function zoneMaps(lib)
+    if zones then return zones end
+    local support = type(lib.Support) == "table" and type(lib.Support.Get) == "function" and lib.Support.Get("ZoneDB")
+    local tables = type(support) == "table" and support.private
+    if type(tables) ~= "table" then return nil end
+    zones = {
+        areaByMap = merged(tables.uiMapIdToAreaId, tables.uiMapIdToAreaIdOverride),
+        parentByArea = merged(tables.subZoneToParentZone, tables.subZoneToParentZoneOverride),
+    }
+    return zones
+end
+
+-- The player's position in QuestieDB's area IDs. A map the tables cannot place, such as an instance or a map newer than QuestieDB, gives nil.
+local function playerWhere(lib)
     local uiMapId = C_Map.GetBestMapForUnit("player")
     if not uiMapId then return nil end
-    local ZoneDB = questieModule("ZoneDB")
-    if not ZoneDB or type(ZoneDB.GetAreaIdByUiMapId) ~= "function" then return nil end
-    local ok, areaId = pcall(ZoneDB.GetAreaIdByUiMapId, ZoneDB, uiMapId)
-    if not ok or not areaId then return nil end
+    local maps = zoneMaps(lib)
+    local areaId = maps and maps.areaByMap[uiMapId]
+    if not areaId then return nil end
 
-    local where = { areaId = areaId }
-    if type(ZoneDB.GetParentZoneId) == "function" then
-        where.parentId = ZoneDB:GetParentZoneId(areaId)
-    end
+    local where = { areaId = areaId, parentId = maps.parentByArea[areaId] }
     local pos = C_Map.GetPlayerMapPosition(uiMapId, "player")
     if pos then
         where.x, where.y = pos.x * 100, pos.y * 100
@@ -270,9 +280,9 @@ local function playerWhere()
     return where
 end
 
--- Squared distance to the nearest spawn in the player's zone or its parent, nil when the NPC never spawns there. Questie spawns are map percentages in the running client's own frame (QuestieDB ships Forever's already converted), so they line up with C_Map positions scaled by 100.
-local function spawnDistance(db, npcId, where)
-    local spawns = db.QueryNPCSingle(npcId, "spawns")
+-- Squared distance to the nearest spawn in the player's zone or its parent, nil when the NPC never spawns there. QuestieDB spawns are map percentages in the running client's own frame (it ships Forever's already converted), so they line up with C_Map positions scaled by 100.
+local function spawnDistance(lib, npcId, where)
+    local spawns = lib.Npc.Get(npcId, "spawns")
     if type(spawns) ~= "table" then return nil end
     local zoneSpawns = spawns[where.areaId] or (where.parentId and spawns[where.parentId])
     if type(zoneSpawns) ~= "table" then return nil end
@@ -314,17 +324,16 @@ local function closestByPriority(entries)
 end
 
 local function nearbyQuestNpcs()
-    local db = questieDB()
-    local log = questLog()
-    if not db or not log then return nil end
+    local lib = questDB()
+    if not lib then return nil end
 
-    local where = playerWhere()
+    local where = playerWhere(lib)
     local inView = nameplateNames()
     local seen = {}
     local entries = {}
 
     local function visit(npcId, kind)
-        local name = npcName(db, npcId)
+        local name = npcName(lib, npcId)
         if not name then return end
         local existing = seen[name]
         if existing then
@@ -335,7 +344,7 @@ local function nearbyQuestNpcs()
         if inView[name] then
             dist = 0
         elseif where then
-            dist = spawnDistance(db, npcId, where)
+            dist = spawnDistance(lib, npcId, where)
         end
         if not dist then return end
         local entry = { name = name, dist = dist, kind = kind, quest = true }
@@ -343,8 +352,8 @@ local function nearbyQuestNpcs()
         seen[name] = entry
     end
 
-    for questId in pairs(log) do
-        forEachQuestNpc(db, log, questId, visit)
+    for questId in pairs(questLog(lib)) do
+        forEachQuestNpc(lib, questId, visit)
     end
 
     return closestByPriority(entries)
@@ -352,37 +361,35 @@ end
 
 -- Quest names from the log first, then quest NPCs, then NPC index names that start with the query, then names that contain it. Prefix before substring puts the name /target can actually acquire at the top.
 local function findSuggestions(query)
-    local db = questieDB()
-    if not db then return {} end
-    buildNpcNameIndex(db)
+    local lib = questDB()
+    if not lib then return {} end
+    buildNpcNameIndex(lib)
     local q = query:lower()
     local results = {}
     local picked = {}
-    local log = questLog()
+    local log = questLog(lib)
 
-    if log then
-        for questId in pairs(log) do
-            local questName = db.QueryQuestSingle(questId, "name")
-            if type(questName) == "string" and questName:lower():find(q, 1, true) then
-                results[#results + 1] = { type = "quest", name = questName, questId = questId }
-                if #results >= ns.MAX_SUGGESTIONS then return results end
-            end
+    for questId in pairs(log) do
+        local questName = lib.Quest.Get(questId, "name")
+        if type(questName) == "string" and questName:lower():find(q, 1, true) then
+            results[#results + 1] = { type = "quest", name = questName, questId = questId }
+            if #results >= ns.MAX_SUGGESTIONS then return results end
         end
+    end
 
-        local questNpcNames = questLogNpcNames(db, log)
-        for i = 1, #questNpcNames do
-            local entry = questNpcNames[i]
-            if not picked[entry.name] and entry.name:lower():find(q, 1, true) then
-                results[#results + 1] = {
-                    type = "npc",
-                    name = entry.name,
-                    questName = entry.questName,
-                    isQuestNpc = true,
-                    kind = entry.kind,
-                }
-                picked[entry.name] = true
-                if #results >= ns.MAX_SUGGESTIONS then return results end
-            end
+    local questNpcNames = questLogNpcNames(lib, log)
+    for i = 1, #questNpcNames do
+        local entry = questNpcNames[i]
+        if not picked[entry.name] and entry.name:lower():find(q, 1, true) then
+            results[#results + 1] = {
+                type = "npc",
+                name = entry.name,
+                questName = entry.questName,
+                isQuestNpc = true,
+                kind = entry.kind,
+            }
+            picked[entry.name] = true
+            if #results >= ns.MAX_SUGGESTIONS then return results end
         end
     end
 
@@ -411,15 +418,14 @@ function ns.FindSuggestions(query)
     return ok and results or {}
 end
 
--- The names every quest in the log still needs, by the same rule as the nearby list. Nil while Questie cannot answer, so nothing is dropped on a guess.
+-- The names every quest in the log still needs, by the same rule as the nearby list. Nil while QuestieDB cannot answer, so nothing is dropped on a guess.
 local function openQuestNpcNames()
-    local db = questieDB()
-    local log = questLog()
-    if not db or not log then return nil end
+    local lib = questDB()
+    if not lib then return nil end
     local names = {}
-    for questId in pairs(log) do
-        forEachQuestNpc(db, log, questId, function(npcId)
-            local name = npcName(db, npcId)
+    for questId in pairs(questLog(lib)) do
+        forEachQuestNpc(lib, questId, function(npcId)
+            local name = npcName(lib, npcId)
             if name then names[name] = true end
         end)
     end
@@ -431,14 +437,9 @@ function ns.OpenQuestNpcNames()
     return ok and names or nil
 end
 
-local function prebuildNameIndex()
-    local db = questieDB()
-    if db then guarded(buildNpcNameIndex, db) end
-end
-
 -- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login, in a new zone and when a quest is accepted, turned in or abandoned, swaps them for the closest NPCs the quests need; a light one, after an objective update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Auto Apply Quest NPCs off only the drop runs, for NPCs added from a quest suggestion or a manual refresh. manual is the minimap right-click and /tf refresh, which fill the rows even with the box off. Names the player added are never touched: ns.SyncQuestEntries only ever removes or places quest entries.
 local function syncQuestNpcs(full, manual)
-    if not ns.QuestieReady() then return end
+    if not ns.QuestDataReady() then return end
     local following = TargetFinderCharDB.questNpcs or manual
     if full and not following then return end
     if not following and not ns.HasQuestEntries() then return end
@@ -458,7 +459,7 @@ end
 
 local syncQueued, fullQueued = false, false
 
--- Questie calls back once per changed objective, after it has updated its objectives and quest log (QuestEventHandler.lua:338, :395, :444 and :588), so a burst of updates runs one sync on the next frame. A full request in the burst wins.
+-- A burst of quest events runs one sync on the next frame. A full request in the burst wins.
 local function queueSync(full)
     fullQueued = fullQueued or full
     if syncQueued then return end
@@ -470,37 +471,58 @@ local function queueSync(full)
     end)
 end
 
--- Questie runs ready callbacks inside its own init, so the index pass and the first sync wait for the next frame.
-local function onQuestieReady()
-    ns.RefreshPanel()
-    C_Timer.After(0, prebuildNameIndex)
+-- Each quest's progress as one string: the completion flag and every objective's count. QUEST_LOG_UPDATE fires for far more than progress, so the light sync runs only when one of these moved, the way Questie compares its cached objectives before it calls back (Modules/Quest/QuestLogCache.lua:249).
+local progress = {}
+
+local function progressKey(questId)
+    local parts = { C_QuestLog.IsComplete(questId) and "done" or "open" }
+    for _, row in each(C_QuestLog.GetQuestObjectives(questId)) do
+        parts[#parts + 1] = type(row) == "table" and (tostring(row.numFulfilled) .. (row.finished and "+" or "")) or "?"
+    end
+    return table.concat(parts, " ")
+end
+
+local function progressMoved()
+    if not activeQuests then return false end
+    local moved = false
+    for questId in pairs(activeQuests) do
+        local key = progressKey(questId)
+        if progress[questId] ~= key then
+            progress[questId] = key
+            moved = true
+        end
+    end
+    for questId in pairs(progress) do
+        if not activeQuests[questId] then progress[questId] = nil end
+    end
+    return moved
+end
+
+-- Accepting, turning in or abandoning a quest changes which NPCs the log needs, and so does a new zone or subzone, so those run a full sync. QUEST_REMOVED fires for a turn-in and an abandon alike. A loading screen also drops the quest set, which the sync then seeds afresh.
+local questEvents = CreateFrame("Frame")
+questEvents:SetScript("OnEvent", function(_, event, questId)
+    if event == "QUEST_LOG_UPDATE" then
+        if progressMoved() then queueSync(false) end
+        return
+    end
+    if event == "QUEST_ACCEPTED" then
+        if activeQuests then activeQuests[questId] = true end
+    elseif event == "QUEST_REMOVED" then
+        if activeQuests then activeQuests[questId] = nil end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        activeQuests = nil
+    end
     queueSync(true)
-end
+end)
 
--- Questie passes why a quest changed (Public/Enums.lua). Accepting, turning in or abandoning a quest changes which NPCs the log needs, so those run a full sync; an objective update runs the light one. The callback runs before Questie adds an accepted quest to its log (QuestEventHandler.lua:343-349), and the sync waits a frame, so the new quest is there by then.
-local function isLogChange(reason)
-    local api = questieApi()
-    local reasons = api and type(api.Enums) == "table" and api.Enums.QuestUpdateTriggerReason
-    if type(reasons) ~= "table" or reason == nil then return false end
-    return reason == reasons.QUEST_ACCEPTED or reason == reasons.QUEST_TURNED_IN or reason == reasons.QUEST_ABANDONED
-end
+local QUEST_EVENTS = { "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_LOG_UPDATE", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA" }
 
-local function onQuestUpdate(_, _, reason)
-    queueSync(isLogChange(reason))
-end
-
--- A new zone or subzone brings other quest NPCs into reach.
-local zoneFrame = CreateFrame("Frame")
-zoneFrame:RegisterEvent("ZONE_CHANGED")
-zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-zoneFrame:SetScript("OnEvent", function() queueSync(true) end)
-
--- Questie calls back at once when it is already ready (Public/RegisterOnReady.lua:15), so registering at login never misses the moment.
-function ns.WatchQuestie()
-    local api = questieApi()
-    if not api or type(api.RegisterOnReady) ~= "function" then return end
-    api.RegisterOnReady(onQuestieReady)
-    if type(api.RegisterForQuestUpdates) == "function" then api.RegisterForQuestUpdates(onQuestUpdate) end
+-- Login starts the quest side: the NPC name index pass runs while the loading screen still shows, and the quest events count from here on. PLAYER_ENTERING_WORLD follows login and runs the first sync.
+function ns.WatchQuests()
+    local lib = questDB()
+    if not lib then return end
+    guarded(buildNpcNameIndex, lib)
+    for _, event in ipairs(QUEST_EVENTS) do questEvents:RegisterEvent(event) end
 end
 
 -- The Auto Apply Quest NPCs box. On fills the list at once, off takes every quest entry away. Typed names stay either way.
@@ -523,8 +545,8 @@ end
 
 -- The minimap right-click and /tf refresh: the quest rows swap for the quest NPCs closest to the player right now, also with Auto Apply Quest NPCs off. One chat line says what happened, since the window may be closed.
 function ns.RefreshQuestNpcs()
-    if not ns.QuestieReady() then
-        ns.Print(ns.QuestieExcuse())
+    if not ns.QuestDataReady() then
+        ns.Print(ns.QuestDataExcuse())
         return
     end
     syncQuestNpcs(true, true)

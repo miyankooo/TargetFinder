@@ -393,7 +393,7 @@ local function buildSlotRow(parent, slot)
 
     buildRowHandle(row, slot)
 
-    -- Questie's own kill, loot or turn-in icon marks a row the quest log fills. A typed row leaves it empty.
+    -- The kill, loot or turn-in icon marks a row the quest log fills. A typed row leaves it empty.
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON, ICON)
     icon:SetPoint("LEFT", row.number, "RIGHT", TIGHT, 0)
@@ -439,8 +439,8 @@ local function fillQuestTooltip(tooltip)
     GameTooltip_SetTitle(tooltip, QUEST_LABEL)
     GameTooltip_AddNormalLine(tooltip, QUEST_HELP)
     GameTooltip_AddInstructionLine(tooltip, QUEST_REFRESH)
-    if not ns.QuestieReady() then
-        GameTooltip_AddErrorLine(tooltip, ns.QuestieExcuse())
+    if not ns.QuestDataReady() then
+        GameTooltip_AddErrorLine(tooltip, ns.QuestDataExcuse())
     end
 end
 
@@ -548,7 +548,7 @@ function ns.RefreshPanel()
     if not ns.PanelShown() then return end
     updateHelp()
 
-    local ready = ns.QuestieReady()
+    local ready = ns.QuestDataReady()
     panel.questBox:SetChecked(TargetFinderCharDB.questNpcs)
     panel.questBox:SetEnabled(ready)
     panel.questBox.Text:SetFontObject(ready and GameFontHighlight or GameFontDisable)
@@ -556,7 +556,6 @@ function ns.RefreshPanel()
     panel.pingBox:SetChecked(TargetFinderCharDB.pings)
 
     panel.rows[1].input.Instructions:SetText(next(ns.targets) == nil and EMPTY_HINT or "")
-    local icons = ns.QuestieKindIcons()
     for slot = 1, MAX_TARGETS do
         local row = panel.rows[slot]
         local entry = ns.targets[slot]
@@ -564,9 +563,9 @@ function ns.RefreshPanel()
             row.input:SetText(entry and entry.name or "")
             row.input:SetCursorPosition(0)
         end
-        local iconPath = entry and entry.kind and icons and icons[entry.kind]
-        if iconPath then
-            row.icon:SetTexture(iconPath)
+        local atlas = entry and entry.kind and ns.KIND_ATLAS[entry.kind]
+        if atlas then
+            row.icon:SetAtlas(atlas)
             row.icon:Show()
         else
             row.icon:Hide()

@@ -6,7 +6,7 @@
 ## Category: Quests
 ## IconTexture: Interface\Icons\Ability_Hunter_SniperShot
 ## X-Curse-Project-ID: 1786005
-## OptionalDeps: Questie
+## Dependencies: QuestieDB
 ## SavedVariables: TargetFinderDB
 ## SavedVariablesPerCharacter: TargetFinderCharDB
 

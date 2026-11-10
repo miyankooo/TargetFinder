@@ -32,8 +32,8 @@ end
 local function fillLauncherTooltip(tooltip)
     GameTooltip_AddInstructionLine(tooltip, "Click to toggle the window.")
     GameTooltip_AddInstructionLine(tooltip, "Right-click to update the quest NPCs.")
-    if not ns.QuestieReady() then
-        GameTooltip_AddErrorLine(tooltip, ns.QuestieExcuse())
+    if not ns.QuestDataReady() then
+        GameTooltip_AddErrorLine(tooltip, ns.QuestDataExcuse())
     end
 end
 

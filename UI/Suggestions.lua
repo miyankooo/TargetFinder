@@ -169,12 +169,12 @@ local function entryText(entry)
     return entry.name
 end
 
-local function fillRow(row, entry, icons)
+local function fillRow(row, entry)
     row.entry = entry
     row:SetText(entryText(entry))
-    local iconPath = icons and entry.type == "npc" and entry.kind and icons[entry.kind]
-    if iconPath then
-        row.icon:SetTexture(iconPath)
+    local atlas = entry.type == "npc" and entry.kind and ns.KIND_ATLAS[entry.kind]
+    if atlas then
+        row.icon:SetAtlas(atlas)
         row.icon:Show()
     else
         row.icon:Hide()
@@ -206,11 +206,10 @@ local function showSuggestions(input, list, typed)
     end
     popup.owner = input
     popup.count = count
-    local icons = ns.QuestieKindIcons()
     for i = 1, MAX_SUGGESTIONS do
         local row = popup.rows[i]
         if i <= count then
-            fillRow(row, list[i], icons)
+            fillRow(row, list[i])
         else
             row.entry = nil
             row:Hide()

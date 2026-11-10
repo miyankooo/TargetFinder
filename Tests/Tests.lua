@@ -395,28 +395,24 @@ end)
 check("menu builds without error under restriction", menuOk, menuErr)
 check("a hidden name adds nothing", #root.items == 2, #root.items)
 
-section("Questie readiness follows Questie.API.isReady")
-check("absent Questie reports not loaded", ns.QuestieReady() == false)
-check("excuse names absence", ns.QuestieExcuse() == "Questie is not loaded.", ns.QuestieExcuse())
--- the database is complete, but Questie has not finished its init
-local noop = function() end
-local earlyDB = { QueryNPCSingle = noop, QueryQuestSingle = noop, QueryItemSingle = noop, NPCPointers = {} }
-_G.QuestieLoader = { ImportModule = function(_, m)
-    if m == "QuestieDB" then return earlyDB end
-    return {}
-end }
-_G.Questie = { API = {
-    isReady = false,
-    RegisterOnReady = function(cb) W.readyCallbacks[#W.readyCallbacks+1] = cb end,
-    RegisterForQuestUpdates = function(cb) W.questCallbacks[#W.questCallbacks+1] = cb end,
-} }
-check("a built database before isReady is not ready", ns.QuestieReady() == false)
-check("excuse names the loading state", ns.QuestieExcuse() == "Questie is still loading.", ns.QuestieExcuse())
+section("quest data readiness follows QuestieDB")
+check("absent QuestieDB reports not loaded", ns.QuestDataReady() == false)
+check("excuse names absence", ns.QuestDataExcuse() == "QuestieDB is not loaded.", ns.QuestDataExcuse())
+-- a QuestieDB that speaks another contract
+local function reader() return { Get = function() end, GetAllIds = function() return {} end } end
+_G.LibQuestieDB = { RequireContract = function(v) return v == 99 end, Quest = reader(), Npc = reader(), Item = reader() }
+check("another contract is not ready", ns.QuestDataReady() == false)
+check("excuse names an unsupported version", ns.QuestDataExcuse() == "This QuestieDB version is not supported.", ns.QuestDataExcuse())
 W.chat = {}
 ns.WipeTargets()
-local loadingOk, loadingErr = pcall(ns.SetQuestNpcs, true)
-check("Quest NPCs waits quietly while Questie loads", loadingOk and targetCount() == 0 and #W.chat == 0, loadingErr)
-check("no suggestions while loading", #ns.FindSuggestions("kob") == 0)
+local offOk, offErr = pcall(ns.SetQuestNpcs, true)
+check("Quest NPCs stays quiet without usable data", offOk and targetCount() == 0 and #W.chat == 0, offErr)
+check("no suggestions without usable data", #ns.FindSuggestions("kob") == 0)
+
+-- the frame that carries the quest events, once login has registered them
+local function questEventFrame()
+    for f in pairs(_G.__frames) do if f.events["QUEST_LOG_UPDATE"] then return f end end
+end
 
 -- PLAYER_LOGIN reaches the bootstrap frame and everything EventUtil.ContinueOnPlayerLogin collected
 local login
@@ -435,8 +431,7 @@ W.chat = {}
 LogIn()
 check("the account's first login prints one welcome line", #W.chat == 1, table.concat(W.chat, " / "))
 check("it says what the addon does, links the window, names /tf and the menu", W.chat[1] == WELCOME, W.chat[1])
-check("login registers for Questie's ready callback", #W.readyCallbacks == 1 and type(W.readyCallbacks[1]) == "function")
-check("login registers for Questie's quest updates", #W.questCallbacks == 1)
+check("login without usable QuestieDB watches no quest events", questEventFrame() == nil)
 check("login never creates FIND", W.macros["FIND"] == nil)
 ns.WriteFinderMacro()
 W.macros["FIND"].body = "edited by hand"
@@ -454,20 +449,16 @@ check("a later session keeps the account table", TargetFinderDB == savedDB and n
 check("a later login prints nothing", #W.chat == 0, table.concat(W.chat, " / "))
 check("login rewrites an existing FIND", W.macros["FIND"].body == "/targetexact Saved" .. TAIL, W.macros["FIND"].body)
 
-_G.Questie.API.isReady = true
-earlyDB.NPCPointers = nil
-check("a reshaped database is not ready", ns.QuestieReady() == false)
-check("excuse names an unknown version", ns.QuestieExcuse() == "This Questie version is not supported.", ns.QuestieExcuse())
-_G.Questie.started = false
-check("excuse names a failed start", ns.QuestieExcuse():match("^Questie failed to start") ~= nil, ns.QuestieExcuse())
-_G.Questie = {}
-check("an emptied Questie table reads as absent", ns.QuestieExcuse() == "Questie is not loaded.", ns.QuestieExcuse())
-_G.QuestieLoader = nil
-_G.Questie = nil
+_G.LibQuestieDB.RequireContract = function(v) return v == 4 end
+_G.LibQuestieDB.Npc = { Get = function() end }
+check("a reader without GetAllIds is not supported", ns.QuestDataReady() == false
+      and ns.QuestDataExcuse() == "This QuestieDB version is not supported.", ns.QuestDataExcuse())
+_G.LibQuestieDB = nil
 
--- A small Questie world with the shapes the installed Questie 12.0.3 uses: quest objects in
--- QuestiePlayer.currentQuestlog carrying ObjectiveData and Objectives[i].Completed.
-local function fakeQuestie()
+-- A small QuestieDB world with the shapes LibQuestieDB contract 4 serves (QuestieDB 1.0.13): entity readers with
+-- Get and GetAllIds, objectives stored by type, ObjectiveFirst, and the zone tables as Lua source strings. The game's
+-- own quest log is W.questLog.
+local function fakeQuestieDB()
     local npcs = {
         [1] = { name = "Done Wolf", spawns = { [12] = { {50, 50} } } },
         [2] = { name = "Kobold Miner", spawns = { [12] = { {52, 52} } } },
@@ -479,53 +470,49 @@ local function fakeQuestie()
         [8] = { name = "Crate Hauler", spawns = { [12] = { {95, 95} } } },
         [9] = { name = "Looter" },
     }
+    -- objectives by type: creatures Done Wolf and Kobold Miner, then item 10
     local quests = {
-        [100] = { name = "Kobold Trouble", startedBy = { {4} }, finishedBy = { {5} } },
+        [100] = { name = "Kobold Trouble", startedBy = { {4} }, finishedBy = { {5} },
+                  objectives = { { {1, nil, 0}, {2, nil, 0} }, nil, { {10, nil, 0} } } },
+        [101] = { name = "A Letter", finishedBy = { {5} } },
     }
     -- item 10 also comes out of the crate item 11, which Crate Hauler drops
     local items = { [10] = { npcDrops = { 3, 6 }, itemDrops = { 11 } }, [11] = { npcDrops = { 8 } } }
-    local quest = {
-        Id = 100,
-        ObjectiveData = {
-            { Type = "monster", Id = 1 },
-            { Type = "monster", Id = 2 },
-            { Type = "item", Id = 10 },
-        },
-        Objectives = { [1] = { Completed = true }, [2] = { Completed = false } },
-    }
-    local state = { complete = 0, nameReads = 0 }
-    local modules = {
-        QuestieDB = {
-            NPCPointers = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [6] = true, [7] = true, [8] = true, [9] = true },
-            QueryNPCSingle = function(id, key)
-                if key == "name" then state.nameReads = state.nameReads + 1 end
-                local r = npcs[id]; return r and r[key]
+    local state = { nameReads = 0 }
+    local function entity(rows, countNames)
+        local ids = {}
+        for id in pairs(rows) do ids[#ids + 1] = id end
+        table.sort(ids)
+        return {
+            Get = function(id, key)
+                if countNames and key == "name" then state.nameReads = state.nameReads + 1 end
+                local r = rows[id]; return r and r[key]
             end,
-            QueryQuestSingle = function(id, key) local r = quests[id]; return r and r[key] end,
-            QueryItemSingle = function(id, key) local r = items[id]; return r and r[key] end,
-            GetQuest = function(id) if id == 100 then return quest end end,
-            IsComplete = function() return state.complete end,
-        },
-        QuestiePlayer = { currentQuestlog = { [100] = quest } },
-        ZoneDB = {
-            GetAreaIdByUiMapId = function(_, uiMapId)
-                if uiMapId == 1429 then return 12 end
-                error("No AreaId found for UiMapId: " .. tostring(uiMapId))
-            end,
-            GetParentZoneId = function() return nil end,
-        },
+            GetAllIds = function() return ids end,
+        }
+    end
+    _G.LibQuestieDB = {
+        RequireContract = function(v) return v >= 1 and v <= 4 end,
+        Quest = entity(quests), Npc = entity(npcs, true), Item = entity(items),
+        ObjectiveFirst = { objectObjectiveFirst = {}, itemObjectiveFirst = {}, killCreditObjectiveFirst = {},
+                           spellObjectiveFirst = {}, eventObjectiveFirst = {} },
+        Support = { Get = function(name)
+            if name ~= "ZoneDB" then return nil end
+            return { private = {
+                uiMapIdToAreaId = "return { [1414] = 10073, [1429] = 9 }",
+                uiMapIdToAreaIdOverride = "return { [1429] = 12 }",
+                subZoneToParentZone = "return {}",
+                subZoneToParentZoneOverride = "return {}",
+            } }
+        end },
     }
-    -- like the real loader, an unknown name gets an empty module rather than nil
-    _G.QuestieLoader = { ImportModule = function(_, name)
-        modules[name] = modules[name] or { private = {} }
-        return modules[name]
-    end }
-    _G.Questie = {
-        API = { isReady = true, Enums = { QuestUpdateTriggerReason = { QUEST_ACCEPTED = 1, QUEST_UPDATED = 2, QUEST_TURNED_IN = 3, QUEST_ABANDONED = 4 } } },
-        usedIcons = { [1] = "slay", [2] = "loot", [8] = "complete" },
-        ICON_TYPE_SLAY = 1, ICON_TYPE_LOOT = 2, ICON_TYPE_COMPLETE = 8,
-    }
-    return modules, quest, state
+    -- the player holds quest 100: the first kill objective is done, the second and the item are open
+    W.questLog = { [100] = { complete = false, rows = {
+        { finished = true, numFulfilled = 8, numRequired = 8 },
+        { finished = false, numFulfilled = 1, numRequired = 8 },
+        { finished = false, numFulfilled = 0, numRequired = 4 },
+    } } }
+    return state
 end
 
 local function namesOf(list)
@@ -534,13 +521,18 @@ local function namesOf(list)
     return out
 end
 
-section("objective progress comes from Questie, not the native quest log")
-local modules, quest, questState = fakeQuestie()
-check("fake Questie is ready", ns.QuestieReady())
+local function setRows(...)
+    local done = { ... }
+    for i, row in ipairs(W.questLog[100].rows) do row.finished = done[i] end
+end
+
+section("objective progress comes from the game's own quest log")
+local questState = fakeQuestieDB()
+check("the fake QuestieDB is ready", ns.QuestDataReady())
 W.chat = {}
 local picks = ns.QuestNpcs(100)
 local names = namesOf(picks)
-check("no native quest-log read and no error", not chatHas("Could not read"), table.concat(W.chat, " / "))
+check("no read failure", not chatHas("Could not read"), table.concat(W.chat, " / "))
 check("open kill objective offered", names["Kobold Miner"] ~= nil)
 check("item droppers offered", names["Kobold Looter"] ~= nil)
 check("droppers of the item's container offered", names["Crate Hauler"] ~= nil and picks[names["Crate Hauler"]].kind == ns.KIND_DROP)
@@ -550,37 +542,59 @@ check("turn-in NPC waits for the quest to be complete", names["Turn In Guy"] == 
 check("entries are quest-sourced", picks[1] and picks[1].quest == true)
 check("kill sorts before drop", picks[1] and picks[1].name == "Kobold Miner" and picks[1].kind == ns.KIND_KILL,
       picks[1] and picks[1].name)
-quest.Objectives[2].Completed = true
-check("Completed flag drops a kill target", namesOf(ns.QuestNpcs(100))["Kobold Miner"] == nil)
-questState.complete = 1
+setRows(true, true, false)
+check("a finished row drops its kill target", namesOf(ns.QuestNpcs(100))["Kobold Miner"] == nil)
+W.questLog[100].complete = true
 local turnIn = ns.QuestNpcs(100)
 check("a complete quest offers only its turn-in NPC", #turnIn == 1 and turnIn[1].name == "Turn In Guy" and turnIn[1].kind == ns.KIND_TURNIN,
       turnIn[1] and turnIn[1].name)
-questState.complete = 0
-quest.Objectives[2].Completed = false
-modules.QuestiePlayer.currentQuestlog[100] = 100
-check("a bare quest id falls back to the database object", namesOf(ns.QuestNpcs(100))["Kobold Miner"] ~= nil)
-modules.QuestiePlayer.currentQuestlog[100] = quest
+W.questLog[100].complete = false
+setRows(true, true, true)
+check("every row done counts before the game's flag", ns.QuestNpcs(100)[1] and ns.QuestNpcs(100)[1].name == "Turn In Guy")
+local loadedRows = W.questLog[100].rows
+W.questLog[100].rows = {}
+local unloaded = namesOf(ns.QuestNpcs(100))
+check("rows not loaded yet leave every objective open", unloaded["Done Wolf"] ~= nil and unloaded["Kobold Miner"] ~= nil
+      and unloaded["Kobold Looter"] ~= nil and unloaded["Turn In Guy"] == nil)
+W.questLog[100].rows = loadedRows
+-- ObjectiveFirst puts the item first, so the game's row 1 is the item and rows 2 and 3 the kills
+_G.LibQuestieDB.ObjectiveFirst.itemObjectiveFirst[100] = true
+setRows(true, true, false)
+local reordered = namesOf(ns.QuestNpcs(100))
+check("ObjectiveFirst moves a type to row 1", reordered["Kobold Looter"] == nil and reordered["Done Wolf"] == nil
+      and reordered["Kobold Miner"] ~= nil)
+_G.LibQuestieDB.ObjectiveFirst.itemObjectiveFirst[100] = nil
+setRows(true, false, false)
+W.questLog[101] = { complete = false, rows = {} }
+local letter = ns.QuestNpcs(101)
+check("a quest with no objectives goes straight to its turn-in NPC", #letter == 1 and letter[1].name == "Turn In Guy")
+W.questLog[101] = nil
 
-section("the NPC name index is built once Questie is ready")
+section("login builds the NPC name index and watches the quest events")
 questState.nameReads = 0
-W.timers = {}
-W.readyCallbacks[1]()
-check("the ready callback defers the index pass", questState.nameReads == 0, questState.nameReads)
-RunTimers()
-check("the deferred pass reads every NPC name", questState.nameReads >= 7, questState.nameReads)
+ns.WatchQuests()
+check("the index pass reads every NPC name at login", questState.nameReads >= 7, questState.nameReads)
+local questEvents = questEventFrame()
+check("accepts, removals, loading screens, zones and progress are watched", questEvents ~= nil
+      and questEvents.events.QUEST_ACCEPTED and questEvents.events.QUEST_REMOVED and questEvents.events.PLAYER_ENTERING_WORLD
+      and questEvents.events.ZONE_CHANGED and questEvents.events.ZONE_CHANGED_NEW_AREA and questEvents.events.QUEST_LOG_UPDATE)
 
 local function questEntries()
     local n = 0
     for slot = 1, ns.MAX_TARGETS do if ns.targets[slot] and ns.targets[slot].quest then n = n + 1 end end
     return n
 end
-local zoneEvents
-for f in pairs(_G.__frames) do if f.events["ZONE_CHANGED_NEW_AREA"] then zoneEvents = f end end
-local function zoneChange(event) zoneEvents.scripts.OnEvent(zoneEvents, event or "ZONE_CHANGED_NEW_AREA"); RunTimers() end
+local function questEvent(event, ...) questEvents.scripts.OnEvent(questEvents, event, ...) end
+local function zoneChange(event) questEvent(event or "ZONE_CHANGED_NEW_AREA"); RunTimers() end
+-- an objective count moves in the game's log, which QUEST_LOG_UPDATE then reports
+local function progressTick(row, finished)
+    local r = W.questLog[100].rows[row]
+    r.finished = finished
+    r.numFulfilled = finished and r.numRequired or (r.numFulfilled + 1) % r.numRequired
+    questEvent("QUEST_LOG_UPDATE")
+end
 
 section("quest NPCs fill the list by themselves")
-check("zone and subzone changes are watched", zoneEvents ~= nil and zoneEvents.events["ZONE_CHANGED"] == true)
 C_Map.GetBestMapForUnit = function() return 1429 end
 C_Map.GetPlayerMapPosition = function() return { x = 0.5, y = 0.5 } end
 W.units = {}
@@ -588,7 +602,7 @@ ns.WipeTargets()
 ns.targets[3] = ns.MakeEntry("Typed Wolf")
 W.macroOrder = {}; W.macros = {}
 W.chat = {}
-zoneEvents.scripts.OnEvent(zoneEvents, "ZONE_CHANGED_NEW_AREA")
+questEvent("ZONE_CHANGED_NEW_AREA")
 check("the sync waits for the next frame", targetCount() == 1)
 RunTimers()
 check("kill target leads", ns.targets[1] and ns.targets[1].name == "Kobold Miner", ns.targets[1] and ns.targets[1].name)
@@ -610,9 +624,8 @@ check("a later sync never creates a second FIND", #W.macroOrder == 1, #W.macroOr
 
 section("finished quest entries leave silently, and the rest hold still")
 ns.WriteFinderMacro()
-quest.Objectives[2].Completed = true
-W.questCallbacks[1](100, 2, 2)
-W.questCallbacks[1](100, 3, 2)
+progressTick(2, true)
+questEvent("QUEST_LOG_UPDATE")
 check("the check waits for the next frame", ns.targets[1] ~= nil)
 RunTimers()
 check("the finished kill target left the list", ns.SlotForName("Kobold Miner") == nil)
@@ -621,28 +634,30 @@ check("typed entries are never touched", ns.SlotForName("Typed Wolf") == 3)
 check("no chat line", #W.chat == 0, table.concat(W.chat, " / "))
 check("an existing FIND follows", not W.macros["FIND"].body:match("Kobold Miner") and W.macros["FIND"].body:match("Kobold Looter") ~= nil,
       W.macros["FIND"].body)
-quest.Objectives[2].Completed = false
-W.questCallbacks[1](100, 2, 1)
+W.timers = {}
+questEvent("QUEST_LOG_UPDATE")
+check("a log update that moves no objective runs no sync", #W.timers == 0, #W.timers)
+progressTick(2, false)
 RunTimers()
-check("an accepted objective fills the free slot", ns.targets[1] and ns.targets[1].name == "Kobold Miner", ns.targets[1] and ns.targets[1].name)
+check("a reopened objective fills the free slot", ns.targets[1] and ns.targets[1].name == "Kobold Miner", ns.targets[1] and ns.targets[1].name)
 
 section("turn-ins and unplaceable maps")
-questState.complete = 1
+W.questLog[100].complete = true
 zoneChange("ZONE_CHANGED")
 check("a complete quest leaves only its turn-in NPC", questEntries() == 1 and ns.SlotForName("Turn In Guy") ~= nil, questEntries())
 check("typed names stay", ns.SlotForName("Typed Wolf") == 3)
-questState.complete = 0
-quest.isComplete = true
+W.questLog[100].complete = false
+setRows(true, true, true)
 zoneChange()
-check("Questie's own isComplete flag counts too", questEntries() == 1 and ns.SlotForName("Turn In Guy") ~= nil)
-quest.isComplete = nil
+check("every row done counts before the game's flag", questEntries() == 1 and ns.SlotForName("Turn In Guy") ~= nil)
+setRows(true, false, false)
 
 C_Map.GetBestMapForUnit = function() return 999 end
 W.units = { nameplate1 = { name = "Kobold Looter" } }
 W.chat = {}
-zoneEvents.scripts.OnEvent(zoneEvents, "ZONE_CHANGED_NEW_AREA")
+questEvent("ZONE_CHANGED_NEW_AREA")
 local nearbyOk, nearbyErr = pcall(RunTimers)
-check("a map Questie cannot place does not raise", nearbyOk, nearbyErr)
+check("a map QuestieDB cannot place does not raise", nearbyOk, nearbyErr)
 check("nameplates still count as nearby", questEntries() == 1 and ns.SlotForName("Kobold Looter") ~= nil, questEntries())
 check("no read failure reported", not chatHas("Could not read"))
 C_Map.GetBestMapForUnit = function() return 1429 end
@@ -666,7 +681,7 @@ ns.targets[1] = ns.MakeEntry("Typed Only")
 local openReads = 0
 local realOpen = ns.OpenQuestNpcNames
 ns.OpenQuestNpcNames = function() openReads = openReads + 1; return realOpen() end
-W.questCallbacks[1](100, 1, 2)
+progressTick(3, false)
 RunTimers()
 check("no quest log walk without quest entries", openReads == 0, openReads)
 ns.OpenQuestNpcNames = realOpen
@@ -680,13 +695,14 @@ ns.targets[2] = ns.MakeEntry("Mine Two")
 -- a quest NPC the log still needs but that is not nearby: the light sync keeps it, a full one swaps it out
 ns.targets[3] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP)
 local function typedHeld() return ns.targets[1].name == "Mine One" and ns.targets[2].name == "Mine Two" end
-W.questCallbacks[1](100, 1, 2)
+progressTick(3, false)
 RunTimers()
 check("an objective update keeps a needed quest row", ns.SlotForName("Kobold Far Away") == 3)
 check("and the typed rows", typedHeld())
-for _, case in ipairs({ { reason = 1, label = "accepting" }, { reason = 3, label = "turning in" }, { reason = 4, label = "abandoning" } }) do
+-- quest 999 is not in the game's log; accepting and then losing it only triggers the sync
+for _, case in ipairs({ { event = "QUEST_ACCEPTED", label = "accepting" }, { event = "QUEST_REMOVED", label = "turning in or abandoning" } }) do
     ns.targets[3] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP)
-    W.questCallbacks[1](100, nil, case.reason)
+    questEvent(case.event, 999)
     RunTimers()
     check(case.label .. " a quest swaps the quest rows for the closest NPCs", ns.SlotForName("Kobold Far Away") == nil
           and ns.SlotForName("Kobold Miner") ~= nil)
@@ -707,13 +723,34 @@ W.chat = {}
 SlashCmdList.TARGETFINDER("refresh")
 check("with every row typed, nothing is replaced", questEntries() == 0 and typedHeld() and ns.SlotForName("Typed8") == 8)
 check("and the line says why", chatHas("Every row holds a name you added, so no quest NPC fits%. Remove one first%.$"), W.chat[1])
-_G.Questie.API.isReady = false
+local supported = _G.LibQuestieDB.RequireContract
+_G.LibQuestieDB.RequireContract = function() return false end
 W.chat = {}
 W.ldbObject.OnClick(nil, "RightButton")
-check("while Questie loads, the line says so", chatHas("Questie is still loading%.$"), W.chat[1])
-_G.Questie.API.isReady = true
+check("an unsupported QuestieDB is named in the line", chatHas("This QuestieDB version is not supported%.$"), W.chat[1])
+_G.LibQuestieDB.RequireContract = supported
 ns.WipeTargets()
 TargetFinderCharDB.questNpcs = true
+
+section("the quest set follows accepts, removals and loading screens")
+local function suggestsLetter()
+    for _, r in ipairs(ns.FindSuggestions("letter")) do if r.type == "quest" then return true end end
+    return false
+end
+W.questLog[101] = { complete = false, rows = {} }
+check("the game's log is not polled on every read", not suggestsLetter())
+questEvent("QUEST_ACCEPTED", 101)
+check("QUEST_ACCEPTED adds a quest", suggestsLetter())
+W.questLog[101] = nil
+questEvent("QUEST_REMOVED", 101)
+check("QUEST_REMOVED takes it out", not suggestsLetter())
+W.questLog[101] = { complete = false, rows = {} }
+questEvent("PLAYER_ENTERING_WORLD")
+check("a loading screen seeds the set afresh from the game's log", suggestsLetter())
+W.questLog[101] = nil
+questEvent("PLAYER_ENTERING_WORLD")
+RunTimers()
+check("and drops what left meanwhile", not suggestsLetter())
 
 section("search suggestions")
 local results = ns.FindSuggestions("kob")
@@ -727,7 +764,8 @@ check("plain database NPCs follow", plain ~= nil and not plain.isQuestNpc)
 local tu = ns.FindSuggestions("tu")
 check("names that start with the query come before names that only contain it",
       tu[1] and tu[1].name == "Turn In Guy" and tu[2] and tu[2].name == "Kobold Tunneler", tu[1] and tu[1].name)
-check("Questie icons resolve per kind", ns.QuestieKindIcons()[ns.KIND_KILL] == "slay" and ns.QuestieKindIcons()[ns.KIND_TURNIN] == "complete")
+check("each kind has its own atlas", ns.KIND_ATLAS[ns.KIND_KILL] == "Crosshair_Attack_48" and ns.KIND_ATLAS[ns.KIND_DROP] == "Crosshair_pickup_48"
+      and ns.KIND_ATLAS[ns.KIND_TURNIN] == "Crosshair_Questturnin_48")
 
 section("a quest picked in the window creates FIND")
 ns.WipeTargets()
@@ -835,7 +873,7 @@ section("rows show where a quest NPC comes from")
 ns.targets[1] = ns.MakeEntry("Quest Mob", true, ns.KIND_KILL)
 ns.targets[2] = ns.MakeEntry("Typed Mob")
 ns.RefreshPanel()
-check("a quest row shows Questie's icon for its kind", row1.icon.texturePath == "slay" and row1.icon.shown == true, row1.icon.texturePath)
+check("a quest row shows its kind's atlas", row1.icon.atlas == "Crosshair_Attack_48" and row1.icon.shown == true, row1.icon.atlas)
 check("a typed row shows no icon", panel.rows[2].icon.shown == false)
 check("an empty row shows no icon", panel.rows[3].icon.shown == false)
 
@@ -852,7 +890,7 @@ check("the window height includes the grown bar", panel.height == -PANEL_INSET_A
       + ns.MAX_TARGETS * (ROW + GAP) - GAP + panel.buttonBarHeight, panel.height)
 check("it is labelled", box.Text.text == "Auto Apply Quest NPCs", box.Text.text)
 check("it mirrors the setting", box.checked == true)
-check("it is on while Questie is ready", box.enabled == true and box.Text.fontObject == GameFontHighlight)
+check("it is on while QuestieDB is ready", box.enabled == true and box.Text.fontObject == GameFontHighlight)
 ns.WipeTargets()
 ns.targets[3] = ns.MakeEntry("Typed Wolf")
 box:SetChecked(false)
@@ -868,15 +906,14 @@ box:SetChecked(true)
 box.scripts.OnClick(box)
 box.scripts.OnEnter(box)
 check("the tooltip uses Blizzard's title helper", W.tooltip[1] == "title:Auto Apply Quest NPCs", W.tooltip[1])
-_G.Questie.API.isReady = false
+_G.LibQuestieDB.RequireContract = function() return false end
 ns.RefreshPanel()
-check("off and greyed while Questie loads", box.enabled == false and box.Text.fontObject == GameFontDisable)
+check("off and greyed with an unsupported QuestieDB", box.enabled == false and box.Text.fontObject == GameFontDisable)
 box.scripts.OnEnter(box)
-check("the tooltip says why", W.tooltip[#W.tooltip] == "error:Questie is still loading.", W.tooltip[#W.tooltip])
-_G.Questie.API.isReady = true
-W.readyCallbacks[1]()
-RunTimers()
-check("Questie's ready callback turns it on", box.enabled == true)
+check("the tooltip says why", W.tooltip[#W.tooltip] == "error:This QuestieDB version is not supported.", W.tooltip[#W.tooltip])
+_G.LibQuestieDB.RequireContract = supported
+ns.RefreshPanel()
+check("a usable QuestieDB turns it back on", box.enabled == true)
 
 section("the Apply Raid Markers box")
 local markerBox = panel.markerBox
@@ -1063,18 +1100,17 @@ check("a quest pick puts that quest's NPCs first", ns.targets[1] and ns.targets[
 check("even its NPCs outside the zone", ns.SlotForName("Kobold Far Away") ~= nil)
 check("the row shows its new entry", input.text == "Kobold Miner", input.text)
 
-section("a changed Questie internal degrades to one message")
-modules.QuestieDB.QueryNPCSingle = function() error("field renamed") end
+section("a changed QuestieDB field degrades to one message")
+_G.LibQuestieDB.Npc.Get = function() error("field renamed") end
 W.chat = {}
 local degradeOk, degraded = pcall(ns.QuestNpcs, 100)
 check("no error escapes", degradeOk, degraded)
 check("empty result instead", degradeOk and type(degraded) == "table" and #degraded == 0)
-check("one chat line explains it", chatHas("Could not read Questie data"), table.concat(W.chat, " / "))
+check("one chat line explains it", chatHas("Could not read QuestieDB data"), table.concat(W.chat, " / "))
 W.chat = {}
 ns.FindSuggestions("kob")
 check("later failures stay quiet", #W.chat == 0, table.concat(W.chat, " / "))
-_G.QuestieLoader = nil
-_G.Questie = nil
+_G.LibQuestieDB = nil
 
 section("launchers share one click and tooltip")
 check("LibDBIcon launcher registered at login", W.ldbObject ~= nil)
@@ -1083,7 +1119,7 @@ check("launcher is named after the addon", W.ldbObject.type == "launcher" and W.
 W.ldbObject.OnTooltipShow(GameTooltip)
 check("minimap tooltip says what each click does and what is missing",
       W.tooltip[1] == "title:Target Finder" and W.tooltip[2] == "instruction:Click to toggle the window."
-      and W.tooltip[3] == "instruction:Right-click to update the quest NPCs." and W.tooltip[4] == "error:Questie is not loaded.",
+      and W.tooltip[3] == "instruction:Right-click to update the quest NPCs." and W.tooltip[4] == "error:QuestieDB is not loaded.",
       table.concat(W.tooltip, " / "))
 local entries = {}
 for _, data in ipairs(AddonCompartmentFrame.registeredAddons) do
@@ -1097,7 +1133,7 @@ check("addon menu left-click toggles the panel", panel.shown ~= wasShown)
 W.chat = {}
 local shownBeforeRight = panel.shown
 entry.func(nil, { buttonName = "RightButton" })
-check("a right-click updates the quest NPCs instead of toggling", panel.shown == shownBeforeRight and chatHas("Questie is not loaded%.$"),
+check("a right-click updates the quest NPCs instead of toggling", panel.shown == shownBeforeRight and chatHas("QuestieDB is not loaded%.$"),
       table.concat(W.chat, " / "))
 
 section("combat defers the macro write")

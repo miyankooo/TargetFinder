@@ -9,5 +9,5 @@ ignore:
   - Tools
   - release-please-config.json
 
-optional-dependencies:
-  - questie
+required-dependencies:
+  - questiedb

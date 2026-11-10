@@ -25,6 +25,13 @@ ns.KIND_KILL = 1
 ns.KIND_DROP = 2
 ns.KIND_TURNIN = 3
 
+-- A quest row's icon per kind: the game's own cursors for attacking, looting and turning in a quest.
+ns.KIND_ATLAS = {
+    [ns.KIND_KILL] = "Crosshair_Attack_48",
+    [ns.KIND_DROP] = "Crosshair_pickup_48",
+    [ns.KIND_TURNIN] = "Crosshair_Questturnin_48",
+}
+
 -- The toc's IconTexture, shared by the panel portrait and the minimap button so both read as this addon.
 ns.ADDON_ICON = "Interface\\Icons\\Ability_Hunter_SniperShot"
 ns.MINIMAP_DEFAULT_POS = 215

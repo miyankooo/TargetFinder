@@ -39,7 +39,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         ns.SetupMinimapButton()
-        ns.WatchQuestie()
+        ns.WatchQuests()
 
         -- Rewrite on login so FIND matches the saved list even if it was edited by hand. Only an existing FIND is edited, because macros may not be loaded yet and a create here could leave two.
         ns.WriteFinderMacro(true, true)

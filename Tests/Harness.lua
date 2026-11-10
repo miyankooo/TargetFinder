@@ -16,6 +16,8 @@ local ADDON = here .. "../"
 -- shim the 5.1 globals WoW provides that newer Lua dropped
 unpack = unpack or table.unpack
 loadstring = loadstring or load
+-- newer Lua has no function environments; a chunk that only returns a table literal needs none
+setfenv = setfenv or function(fn) return fn end
 
 local log = {}
 local function note(...) log[#log+1] = table.concat({...}, " ") end
@@ -32,8 +34,7 @@ W = {
     secretsOn = false,
     nilChecks = 0,         -- canaccessvalue calls that passed nil
     markCalls = 0,         -- SetRaidTarget calls
-    readyCallbacks = {},   -- functions handed to Questie.API.RegisterOnReady
-    questCallbacks = {},   -- functions handed to Questie.API.RegisterForQuestUpdates
+    questLog = {},         -- questId -> {complete=bool, rows={ {finished=, numFulfilled=, numRequired=} }}
     group = nil,           -- nil solo, "party" or "raid"
     leader = false,        -- the player leads the group
     assistant = false,     -- the player is a raid assistant
@@ -364,8 +365,14 @@ C_Secrets = {
 C_Timer = { After = function(_, fn) W.timers = W.timers or {}; W.timers[#W.timers+1] = fn end }
 function RunTimers() local t = W.timers or {}; W.timers = {}; for _, fn in ipairs(t) do fn() end end
 
--- quest progress must come from Questie, so the native quest log refuses to be read
-C_QuestLog = { GetQuestObjectives = function() error("native quest log read") end }
+-- the game's quest log, read by quest ID only: the index API hides quests under collapsed headers
+C_QuestLog = {
+    IsOnQuest = function(id) return W.questLog[id] ~= nil end,
+    IsComplete = function(id) local q = W.questLog[id]; return q ~= nil and q.complete == true end,
+    GetQuestObjectives = function(id) local q = W.questLog[id]; return q and q.rows or {} end,
+    GetInfo = function() error("quest log read by index") end,
+    GetNumQuestLogEntries = function() error("quest log read by index") end,
+}
 C_Map = { GetBestMapForUnit = function() return nil end }
 Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }
 UNKNOWN = "Unknown"
