@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/miyankooo/TargetFinder/compare/v1.2.0...v1.3.0) (2026-11-11)
+
+
+### Features
+
+* FIND is created under General Macros, shared by all your characters ([2e7b214](https://github.com/miyankooo/TargetFinder/commit/2e7b214eae43e9f7e4c9fa16db9ffb4628c85890))
+* Quest NPCs and suggestions come from QuestieDB, so Questie is no longer needed ([117cbe9](https://github.com/miyankooo/TargetFinder/commit/117cbe9ef1ac8ecf03db553134e50909cef5744f))
+
+
+### Bug Fixes
+
+* FIND clears a dead target first and no longer jumps back to your last target ([a8c7bdf](https://github.com/miyankooo/TargetFinder/commit/a8c7bdfd6ace90d754409ae4f2e41db149a4a34d))
+
 ## [1.2.0](https://github.com/miyankooo/TargetFinder/compare/v1.1.0...v1.2.0) (2026-11-09)
 
 
