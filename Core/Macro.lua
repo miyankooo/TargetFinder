@@ -2,21 +2,20 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 local MACRO_LIMIT = 255
-local CHARACTER_MACRO_CAP = Constants.MacroConsts.MAX_CHARACTER_MACROS
 local ACCOUNT_MACRO_CAP = Constants.MacroConsts.MAX_ACCOUNT_MACROS
 
 -- Bars 1-6 fill slots 1-72 and MultiBar5-7 add 145-180. An unused slot simply reads back nil.
 local ACTION_SLOT_COUNT = 180
 
--- Write the macro, then read the index back. CreateMacro returns the new index, but it has no generated documentation and may raise at the cap, so the protected call and the read-back settle success. FIND is a character macro, because the list and the action bars are per character. The second result says this call created it.
--- shortcut: GetMacroIndexByName finds an account macro of the same name first and edits it, upgrade to a character-range lookup if players report a shared FIND.
+-- Write the macro, then read the index back. CreateMacro returns the new index, but it has no generated documentation and may raise at the cap, so the protected call and the read-back settle success. FIND is a General macro (CreateMacro's fourth argument, isCharacterMacro, left out: Blizzard_MacroIconSelector.lua:109), so every character shares one FIND and each login rewrites it with that character's list. The second result says this call created it.
+-- GetMacroIndexByName finds a General macro of the same name first. A character FIND from an older version is found only while no General one exists, and keeps working until the player deletes it.
 local function setMacro(name, icon, body)
     local index = GetMacroIndexByName(name)
     local existed = index and index > 0
     if existed then
         EditMacro(index, name, icon, body)
     else
-        pcall(CreateMacro, name, icon, body, true)
+        pcall(CreateMacro, name, icon, body)
     end
     local written = GetMacroIndexByName(name)
     local ok = written ~= nil and written > 0
@@ -64,11 +63,11 @@ local capWarned = false
 local function warnMacroCap(name)
     if capWarned then return end
     capWarned = true
-    ns.Print("Could not write the " .. name .. " macro, because this character has " .. CHARACTER_MACRO_CAP
+    ns.Print("Could not write the " .. name .. " macro, because " .. GENERAL_MACROS .. " holds " .. ACCOUNT_MACRO_CAP
         .. " macros. Delete one in the macro book (/m) and try again.")
 end
 
--- The first FIND a character gets opens the macro book on it with its icon glowing and the help tip beside it, so the player sees the macro Target Finder wrote and where to drag it from. It runs a frame later, after the write that created FIND has refreshed the window. It adds no chat line, because a quest fill can create FIND at login.
+-- The first FIND Target Finder creates opens the macro book on it with its icon glowing and the help tip beside it, so the player sees the macro Target Finder wrote and where to drag it from. It runs a frame later, after the write that created FIND has refreshed the window. It adds no chat line, because a quest fill can create FIND at login.
 local function introduceFinder()
     if TargetFinderCharDB.finderIntroduced then return end
     TargetFinderCharDB.finderIntroduced = true
@@ -97,7 +96,7 @@ local function queueMacro(name, icon, body, quiet)
     writeMacro(name, icon, body)
 end
 
--- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. Like RestedXP's targeting macro, FIND is created when it is missing and the list holds a name, quest fills included. editOnly marks the login and group-change writes, which only edit an existing FIND, because at login the character's macros may not be loaded yet and a create could leave two. quiet marks the writes the player did not make, which show no combat notice.
+-- The single write path for the tracked list: persistence is implicit because the saved variable aliases the live table. Like RestedXP's targeting macro, FIND is created when it is missing and the list holds a name, quest fills included. editOnly marks the login and group-change writes, which only edit an existing FIND, because at login the macros may not be loaded yet and a create could leave two. quiet marks the writes the player did not make, which show no combat notice.
 function ns.WriteFinderMacro(editOnly, quiet)
     if GetMacroIndexByName(ns.FIND_MACRO) > 0 or (not editOnly and next(ns.targets) ~= nil) then
         queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody(), quiet)

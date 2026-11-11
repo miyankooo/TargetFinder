@@ -375,6 +375,7 @@ C_QuestLog = {
 }
 C_Map = { GetBestMapForUnit = function() return nil end }
 Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }
+GENERAL_MACROS = "General Macros"
 UNKNOWN = "Unknown"
 UIParent = CreateFrame("Frame")
 UISpecialFrames = {}

@@ -26,4 +26,4 @@ A WoW Forever addon that gives you one FIND button to target, raid-mark and ping
 
 Commands: `/tf`, `/tf add`, `/tf refresh`, `/tf minimap`, `/tf intro` and `/tf help`.
 
-FIND needs a free character macro slot. In a group, markers need leader or assistant rights.
+FIND is a General macro that your characters share, so it needs a free General slot. In a group, markers need leader or assistant rights.

@@ -134,7 +134,7 @@ local body = W.macros["FIND"].body
 local OPEN = "/cleartarget [dead]\n"
 check("a corpse is cleared first, then exact names reversed so slot 1 wins last",
       body == OPEN .. "/targetexact Gamma\n/targetexact Beta\n/targetexact Alpha", body:gsub("\n","|"))
-check("FIND is a character macro", W.macros["FIND"].perCharacter == true)
+check("FIND is a General macro", not W.macros["FIND"].perCharacter)
 check("FIND uses the icon's file ID", W.macros["FIND"].icon == 132212, W.macros["FIND"].icon)
 ns.WipeTargets(); ns.WriteFinderMacro()
 check("empty list is a no-op comment", W.macros["FIND"].body:sub(1,2) == "//", W.macros["FIND"].body)
@@ -156,7 +156,7 @@ W.macroOrder = {}; W.macros = {}; W.macroCap = 0
 W.chat = {}
 ns.targets[1] = ns.MakeEntry("Anything")
 ns.WriteFinderMacro()
-check("cap failure announced", chatHas("Delete one in the macro book"), table.concat(W.chat, " / "))
+check("cap failure names the full General tab", chatHas("because General Macros holds 120 macros%. Delete one in the macro book"), table.concat(W.chat, " / "))
 W.macroCap = 120
 
 section("Apply Raid Markers adds RestedXP's marker line to FIND")
@@ -306,7 +306,7 @@ check("the line opens with the gold title, the rest uncoloured", W.chat[1]
       == NORMAL_FONT_COLOR:WrapTextInColorCode("[Target Finder]") .. ": Tracking Mangeclaw. Drag FIND from the macro book (/m) to an action bar.",
       W.chat[1])
 check("Track opens the macro book", MacroFrame and MacroFrame.shown == true)
-check("on the character tab with FIND selected", MacroFrame and MacroFrame.tab == 2 and MacroFrame.selected == GetMacroIndexByName("FIND") - 120,
+check("on the General tab with FIND selected", MacroFrame and MacroFrame.tab == 1 and MacroFrame.selected == GetMacroIndexByName("FIND"),
       MacroFrame and (tostring(MacroFrame.tab) .. "/" .. tostring(MacroFrame.selected)))
 W.chat = {}
 MacroFrame.shown = false
@@ -616,7 +616,7 @@ check("quest entries carry their kind", ns.targets[1].kind == ns.KIND_KILL and n
 check("the fill is silent", #W.chat == 0, table.concat(W.chat, " / "))
 check("a quest fill creates the missing FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body:match("/targetexact Kobold Miner") ~= nil,
       W.macros["FIND"] and W.macros["FIND"].body)
-check("as a character macro", W.macros["FIND"] and W.macros["FIND"].perCharacter == true)
+check("as a General macro", W.macros["FIND"] and not W.macros["FIND"].perCharacter)
 W.macroOrder = {}; W.macros = {}
 zoneChange()
 check("saved quest rows get FIND on a sync that changes nothing", W.macros["FIND"] ~= nil)
@@ -1299,8 +1299,8 @@ check("a quest fill creates FIND", W.macros["FIND"] ~= nil)
 check("the introduction waits a frame", MacroFrame.shown == false)
 W.chat = {}
 RunTimers()
-check("the macro book opens on FIND", MacroFrame and MacroFrame.shown == true and MacroFrame.tab == 2
-      and MacroFrame.selected == GetMacroIndexByName("FIND") - 120)
+check("the macro book opens on FIND", MacroFrame and MacroFrame.shown == true and MacroFrame.tab == 1
+      and MacroFrame.selected == GetMacroIndexByName("FIND"))
 local glow
 for _, f in ipairs(W.created) do
     if f.template == "ActionButtonSpellAlertTemplate" then glow = f end
@@ -1318,17 +1318,17 @@ check("Blizzard's help tip points at the large icon", tip and tip.shown == true 
 check("it says what to do with FIND and what it gives", tip.info.text == "Drag FIND to an action bar to target the names on your Target Finder list."
       and tip.info.buttonStyle == HelpTip.ButtonStyle.Close and tip.info.targetPoint == HelpTip.Point.RightEdgeCenter)
 table.insert(W.macroOrder, 1, "Other")
-W.macros["Other"] = { perCharacter = true }
+W.macros["Other"] = {}
 MacroFrame:SelectMacro(1)
 check("selecting another macro hides it", glow.shown == false)
 check("and the tip, without marking it seen", tip.shown == false and TargetFinderDB.tipSeen == nil)
-MacroFrame:SelectMacro(GetMacroIndexByName("FIND") - 120)
+MacroFrame:SelectMacro(GetMacroIndexByName("FIND"))
 check("selecting FIND again brings it back", glow.shown == true and glow.ProcStartAnim.playing == true)
 W.actions[3] = { kind = "macro", id = GetMacroIndexByName("FIND") }
 glow.scripts.OnEvent(glow, "ACTIONBAR_SLOT_CHANGED")
 check("FIND on a bar ends it", glow.shown == false and glow.events["ACTIONBAR_SLOT_CHANGED"] == nil)
 check("placing FIND counts the tip as seen", tip.shown == false and TargetFinderDB.tipSeen == true)
-MacroFrame:SelectMacro(GetMacroIndexByName("FIND") - 120)
+MacroFrame:SelectMacro(GetMacroIndexByName("FIND"))
 check("and it stays off", glow.shown == false)
 W.actions = {}
 ns.ShowFinder()
