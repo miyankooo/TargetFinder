@@ -6,7 +6,7 @@ A WoW Forever addon that gives you one FIND button to target, raid-mark and ping
 
 ## Features
 
-- FIND targets the first name on your list that is in range and skips corpses, the way RestedXP's targeting macro does.
+- FIND drops a dead target, then targets the first name on your list that is in range.
 - Target Finder creates the FIND macro for you and keeps it up to date.
 - Track and Untrack sit at the top of the right-click menu on NPC and player portraits.
 - Apply Raid Markers: FIND marks the NPC it targets with a cross, as RestedXP's macro does.

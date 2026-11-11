@@ -131,9 +131,9 @@ ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta"); ns.targets[3] = ns.MakeEntry("Gamma")
 ns.WriteFinderMacro()
 local body = W.macros["FIND"].body
-local TAIL = "\n/targetlasttarget [dead]"
-check("exact names reversed so slot 1 wins last, then the corpse guard, and no marker line",
-      body == "/targetexact Gamma\n/targetexact Beta\n/targetexact Alpha" .. TAIL, body:gsub("\n","|"))
+local OPEN = "/cleartarget [dead]\n"
+check("a corpse is cleared first, then exact names reversed so slot 1 wins last",
+      body == OPEN .. "/targetexact Gamma\n/targetexact Beta\n/targetexact Alpha", body:gsub("\n","|"))
 check("FIND is a character macro", W.macros["FIND"].perCharacter == true)
 check("FIND uses the icon's file ID", W.macros["FIND"].icon == 132212, W.macros["FIND"].icon)
 ns.WipeTargets(); ns.WriteFinderMacro()
@@ -147,7 +147,8 @@ local b = W.macros["FIND"].body
 check("body within cap", #b <= 255, #b)
 check("slot 1 survived truncation", b:match("Name1") ~= nil)
 check("slot 8 dropped first", b:match("Name8") == nil)
-check("the corpse guard always stays", b:sub(-#TAIL) == TAIL, b:sub(-#TAIL))
+check("slot 1 is the last line", b:sub(-#"Name1" - 28) == "Name1" .. string.rep("x", 28), b:sub(-40))
+check("the corpse clear always stays first", b:sub(1, #OPEN) == OPEN, b:sub(1, 30))
 
 section("macro cap is reported, not silent")
 ns.WipeTargets()
@@ -164,8 +165,8 @@ W.units = {}
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta"); ns.targets[4] = ns.MakeEntry("Delta")
 ns.WriteFinderMacro()
-check("RestedXP's body: reversed names, the cross, then the corpse guard",
-      W.macros["FIND"].body == "/targetexact Delta\n/targetexact Beta\n/targetexact Alpha\n/tm !7\n/targetlasttarget [dead]",
+check("reversed names, then the cross",
+      W.macros["FIND"].body == OPEN .. "/targetexact Delta\n/targetexact Beta\n/targetexact Alpha\n/tm !7",
       (W.macros["FIND"].body:gsub("\n", "|")))
 check("the addon itself never marks", W.markCalls == 0, W.markCalls)
 ns.WipeTargets()
@@ -173,12 +174,12 @@ for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Name%d"):format(i) .. string.rep(
 ns.WriteFinderMacro()
 local full = W.macros["FIND"].body
 check("a long list stays within the cap", #full <= 255, #full)
-check("the marker and the corpse guard always stay", full:sub(-32) == "\n/tm !7\n/targetlasttarget [dead]", (full:gsub("\n", "|")))
+check("the marker always stays", full:sub(-7) == "\n/tm !7", (full:gsub("\n", "|")))
 check("the lowest rows drop first", full:match("Name8") == nil and full:match("/targetexact Name1x+\n/tm") ~= nil)
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Kobold")
 ns.WriteFinderMacro()
-local function marks() return W.macros["FIND"].body:match("\n/tm !7\n") ~= nil end
+local function marks() return W.macros["FIND"].body:find("\n/tm !7", 1, true) ~= nil end
 check("solo, FIND marks", marks())
 local macroEvents
 for f in pairs(_G.__frames) do if f.events["GROUP_ROSTER_UPDATE"] then macroEvents = f end end
@@ -227,13 +228,13 @@ ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta")
 ns.WriteFinderMacro()
 check("off, FIND has no ping line", W.macros["FIND"].body:find("/ping", 1, true) == nil, W.macros["FIND"].body)
 ns.SetPings(true)
-check("ticking adds the ping after the corpse guard, so it lands on the unit FIND ends on",
-      TargetFinderCharDB.pings == true and W.macros["FIND"].body == "/targetexact Beta\n/targetexact Alpha" .. TAIL .. PING_LINE,
+check("ticking adds the ping last, so it lands on the unit FIND ends on",
+      TargetFinderCharDB.pings == true and W.macros["FIND"].body == OPEN .. "/targetexact Beta\n/targetexact Alpha" .. PING_LINE,
       (W.macros["FIND"].body:gsub("\n", "|")))
 TargetFinderCharDB.raidMarkers = true
 ns.WriteFinderMacro()
-local closingLines = "\n/tm !7" .. TAIL .. PING_LINE
-check("with markers: the cross, the corpse guard, then the ping", W.macros["FIND"].body:sub(-#closingLines) == closingLines,
+local closingLines = "\n/tm !7" .. PING_LINE
+check("with markers: the cross, then the ping", W.macros["FIND"].body:sub(-#closingLines) == closingLines,
       (W.macros["FIND"].body:gsub("\n", "|")))
 ns.WipeTargets()
 for i = 1, 8 do ns.targets[i] = ns.MakeEntry(("Name%d"):format(i) .. string.rep("x", 28)) end
@@ -447,7 +448,7 @@ W.chat = {}
 LogIn()
 check("a later session keeps the account table", TargetFinderDB == savedDB and ns.db == savedDB)
 check("a later login prints nothing", #W.chat == 0, table.concat(W.chat, " / "))
-check("login rewrites an existing FIND", W.macros["FIND"].body == "/targetexact Saved" .. TAIL, W.macros["FIND"].body)
+check("login rewrites an existing FIND", W.macros["FIND"].body == "/cleartarget [dead]\n/targetexact Saved", W.macros["FIND"].body)
 
 _G.LibQuestieDB.RequireContract = function(v) return v == 4 end
 _G.LibQuestieDB.Npc = { Get = function() end }
@@ -1030,7 +1031,7 @@ W.mouseOver = nil
 check("the drop moves the name and the rows between step up", ns.targets[1].name == "Second" and ns.targets[2] == nil
       and ns.targets[3].name == "Fourth" and ns.targets[4].name == "First", (ns.targets[1] and ns.targets[1].name or "-"))
 check("the row is solid again and the line gone", panel.rows[1].alpha == 1 and line.shown == false)
-check("FIND follows the new order", W.macros["FIND"].body:match("/targetexact Second\n/targetlasttarget") ~= nil, W.macros["FIND"].body)
+check("FIND follows the new order", W.macros["FIND"].body:match("/targetexact Second$") ~= nil, W.macros["FIND"].body)
 check("a moved quest NPC stays a quest NPC", ns.targets[3].quest == true)
 local handle4 = panel.rows[4].handle
 handle4.scripts.OnDragStart(handle4)
@@ -1149,7 +1150,7 @@ local regen
 for f in pairs(_G.__frames) do if f.events["PLAYER_REGEN_ENABLED"] then regen = f end end
 regen.scripts.OnEvent(regen, "PLAYER_REGEN_ENABLED")
 check("replayed after combat", W.macros["FIND"] ~= nil
-      and W.macros["FIND"].body == "/targetexact Deferred" .. TAIL, W.macros["FIND"] and W.macros["FIND"].body)
+      and W.macros["FIND"].body == "/cleartarget [dead]\n/targetexact Deferred", W.macros["FIND"] and W.macros["FIND"].body)
 W.errors = {}
 W.inCombat = true
 ns.targets[2] = ns.MakeEntry("Auto")
