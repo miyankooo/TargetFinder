@@ -777,7 +777,7 @@ check("the pick creates FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body
       W.macros["FIND"] and W.macros["FIND"].body)
 
 section("panel is a native ButtonFrameTemplate window")
--- the design system's sizes the panel is built from
+-- the sizes the panel is built from
 local TIGHT, GAP, PADDING, ROW, ICON = 4, 8, 16, 24, 16
 local function onGrid(v) return v % 4 == 0 end
 ns.WipeTargets()

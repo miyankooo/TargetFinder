@@ -414,7 +414,7 @@ CLEAR_ALL = "Clear All"
 PRESS_TAB = "Press Tab"
 ICON_LIST = {}
 for i = 1, 8 do ICON_LIST[i] = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_" .. i .. ":" end
--- the font objects behind the design system's roles; distinct tables so a test can tell the roles apart
+-- the font objects behind the text roles; distinct tables so a test can tell the roles apart
 GameFontNormal = { name = "GameFontNormal" }
 GameFontHighlight = { name = "GameFontHighlight" }
 GameFontDisable = { name = "GameFontDisable" }

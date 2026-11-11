@@ -16,7 +16,7 @@ local HINT_BOTTOM = 8
 local CHROME = 36
 local OVERLAP = 4
 
--- Role icons are the design system's 16 px inline icon and come before the name, one gap clear of it.
+-- Role icons are 16 px inline icons and come before the name, one gap clear of it.
 local ICON = 16
 local GAP = 8
 local NAME_INSET = TEXT_INSET + ICON + GAP

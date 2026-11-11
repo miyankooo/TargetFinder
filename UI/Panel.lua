@@ -2,7 +2,7 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- Sizes from the design system (wow-forever-dev, ui-components.md): spacing on the 4 px grid, the 24 px row and the 16 px inline icon.
+-- Sizes: spacing on the 4 px grid, the 24 px row and the 16 px inline icon.
 local TIGHT = 4
 local GAP = 8
 local PADDING = 16
