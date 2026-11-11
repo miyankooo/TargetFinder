@@ -205,7 +205,9 @@ local STEP_PRESS = "Press FIND to target the first listed NPC in range."
 -- The list's empty state. The rows fill the inset, so instead of a centred line over them the first row's own grey hint says what the list takes while nothing is listed; the attic's gold line already says how to fill it.
 local EMPTY_HINT = "NPC or player name"
 
-local NAME_HELP = "Type an NPC or player name and press Enter. FIND matches whole names only."
+local NAME_HELP = "Type an NPC or player name and press Enter."
+local NAME_EXACT = "FIND matches whole names only."
+local NAME_PARTIAL = "FIND also matches part of a name, such as Murloc for Murloc Forager."
 local ADD_HELP = "Saves the typed name in this row. Enter does the same."
 
 local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
@@ -220,6 +222,10 @@ local MARKER_RIGHTS = "In a group, markers need leader or assistant rights."
 
 local PING_LABEL = "Apply Pings"
 local PING_HELP = "FIND pings the NPC it targets as your ping key does, so your group sees it too."
+
+local EXACT_LABEL = "Exact Names"
+local EXACT_HELP = "FIND targets only NPCs whose whole name matches a row."
+local EXACT_OFF = "Untick to let part of a name match too, such as Murloc for Murloc Forager."
 
 -- The template's 26px button bar fits a 22px button, which leaves a 24px checkbox no room. The bar grows to one gap above and below the checkboxes, measured from the frame's bottom border, MagicButton_OnLoad's 4px inset (Mainline/SharedUIPanelTemplates.lua:34). The checkboxes start at the rows' left edge.
 local BAR_BORDER = 4
@@ -279,7 +285,7 @@ local function buildSlotInput(row, slot)
     end)
     HookTooltip(input, function(tooltip)
         GameTooltip_SetTitle(tooltip, "Row " .. slot)
-        GameTooltip_AddNormalLine(tooltip, NAME_HELP)
+        GameTooltip_AddNormalLine(tooltip, NAME_HELP .. " " .. (TargetFinderCharDB.exactNames == false and NAME_PARTIAL or NAME_EXACT))
     end)
     return input
 end
@@ -489,6 +495,21 @@ local function buildPingBox(frame)
     frame.pingBox = box
 end
 
+local function fillExactTooltip(tooltip)
+    GameTooltip_SetTitle(tooltip, EXACT_LABEL)
+    GameTooltip_AddNormalLine(tooltip, EXACT_HELP)
+    GameTooltip_AddNormalLine(tooltip, EXACT_OFF)
+end
+
+-- The fourth bar control follows the third the same way.
+local function buildExactBox(frame)
+    local box = CreateCheckbox(frame, EXACT_LABEL)
+    box:SetPoint("LEFT", frame.pingBox.Text, "RIGHT", PADDING, 0)
+    box:SetScript("OnClick", function(self) ns.SetExactNames(self:GetChecked()) end)
+    AttachTooltip(box, fillExactTooltip)
+    frame.exactBox = box
+end
+
 -- The bar's checkboxes share one line, so the window grows past PANEL_WIDTH when their labels need the room, keeping the rows' margin on the right. Each box is one row square with its label one tight step on, as CreateCheckbox lays it out.
 local function fitBarWidth(frame, boxes)
     local width = BAR_LEFT + PADDING - PANEL_INSET_RIGHT_OFFSET
@@ -539,7 +560,8 @@ local function buildPanel()
     buildQuestBox(panel)
     buildMarkerBox(panel)
     buildPingBox(panel)
-    fitBarWidth(panel, { panel.questBox, panel.markerBox, panel.pingBox })
+    buildExactBox(panel)
+    fitBarWidth(panel, { panel.questBox, panel.markerBox, panel.pingBox, panel.exactBox })
     return panel
 end
 
@@ -554,6 +576,7 @@ function ns.RefreshPanel()
     panel.questBox.Text:SetFontObject(ready and GameFontHighlight or GameFontDisable)
     panel.markerBox:SetChecked(TargetFinderCharDB.raidMarkers)
     panel.pingBox:SetChecked(TargetFinderCharDB.pings)
+    panel.exactBox:SetChecked(TargetFinderCharDB.exactNames)
 
     panel.rows[1].input.Instructions:SetText(next(ns.targets) == nil and EMPTY_HINT or "")
     for slot = 1, MAX_TARGETS do

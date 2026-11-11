@@ -22,7 +22,7 @@ local function setMacro(name, icon, body)
     return ok, ok and not existed
 end
 
--- FIND opens with /cleartarget [dead], which drops a corpse so the search starts fresh (SlashCommands.lua:541-546); then one /targetexact per row in REVERSE, so row 1 is the last line and wins; then RestedXP's /tm !<marker> on Forever, whose "!" leaves the marker on a unit that already carries it (SlashCommands.lua:1458-1464). A line that finds nothing leaves the target as it was, so FIND keeps a living target and never grabs an off-list mob. Like RestedXP, the lowest rows drop off until the targeting lines fit what the other lines leave of the 255-character cap.
+-- FIND opens with /cleartarget [dead], which drops a corpse so the search starts fresh (SlashCommands.lua:541-546); then one /targetexact per row in REVERSE, so row 1 is the last line and wins. With Exact Names off the rows use /target instead, the same TargetUnit call without exactMatch, so part of a name matches too (SlashCommands.lua:479-496); then RestedXP's /tm !<marker> on Forever, whose "!" leaves the marker on a unit that already carries it (SlashCommands.lua:1458-1464). A line that finds nothing leaves the target as it was, so FIND keeps a living target and never grabs an off-list mob. Like RestedXP, the lowest rows drop off until the targeting lines fit what the other lines leave of the 255-character cap.
 -- Addons may not mark on Forever (SetRaidTarget raised ADDON_ACTION_FORBIDDEN in game on 2026-11-08, and RestedXP's UpdateMarker returns early there), so /tm, Blizzard's secure path, is the only way. The marker line is written only while Apply Raid Markers is ticked and the player may mark.
 -- Apply Pings closes FIND with Blizzard's /ping, its secure path, since C_Ping.SendMacroPing is restricted for addons (PingManagerDocumentation.lua:53-56). It carries no ping type, so the game picks the ping as it does for a tap of the ping key (Blizzard_PingManager.lua:181 sends nil). It comes last, so it pings the unit FIND ends on. The conditions skip it without a living target, because a /ping whose conditions fail sends nothing, where a bare one pings the ground (Mainline/SlashCommandsOverrides.lua:55-75).
 local PING = "\n/ping [@target,exists,nodead]"
@@ -43,9 +43,10 @@ local function buildFindBody()
     if #ordered == 0 then return "// " .. ns.title .. " - no targets" end
 
     local closing = (marking and "\n/tm !" .. ns.FIND_MARKER or "") .. (TargetFinderCharDB.pings == true and PING or "")
+    local command = TargetFinderCharDB.exactNames == false and "/target " or "/targetexact "
     local lines = {}
     for i = #ordered, 1, -1 do
-        lines[#lines + 1] = "/targetexact " .. ordered[i].name
+        lines[#lines + 1] = command .. ordered[i].name
     end
     local content = table.concat(lines, "\n")
     while #content > MACRO_LIMIT - #OPENING - #closing and #lines > 1 do
@@ -102,6 +103,12 @@ function ns.WriteFinderMacro(editOnly, quiet)
         queueMacro(ns.FIND_MACRO, ns.FIND_ICON, buildFindBody(), quiet)
     end
     ns.RefreshPanel()
+end
+
+-- The Exact Names box: FIND is rewritten at once with /targetexact or /target lines.
+function ns.SetExactNames(on)
+    TargetFinderCharDB.exactNames = on
+    ns.WriteFinderMacro()
 end
 
 -- Marker lines follow the group role, so a roster or leader change rewrites FIND when the player gains or loses the right to mark.

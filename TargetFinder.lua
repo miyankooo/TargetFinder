@@ -28,6 +28,9 @@ local function initSavedVars()
     -- Pings reach the whole group on every FIND press, so they wait until the player ticks the box.
     if type(TargetFinderCharDB.pings) ~= "boolean" then TargetFinderCharDB.pings = false end
 
+    -- FIND matches whole names unless the player turns the box off.
+    if type(TargetFinderCharDB.exactNames) ~= "boolean" then TargetFinderCharDB.exactNames = true end
+
     -- Adopt validates and rebuilds the list, then the saved variable is pointed at the live table so later mutations persist with no explicit save step.
     TargetFinderCharDB.targets = ns.AdoptSaved(TargetFinderCharDB.targets)
 end

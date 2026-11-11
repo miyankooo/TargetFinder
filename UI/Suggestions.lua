@@ -82,7 +82,7 @@ function ns.TakeSelectedSuggestion(input)
     return true
 end
 
--- Blizzard's AutoComplete preselects a row so Enter takes a whole name, which FIND needs because it matches names exactly. The NPC whose name the player typed in full wins, otherwise the first NPC row. A quest row is never preselected, because it fills several rows at once.
+-- Blizzard's AutoComplete preselects a row so Enter takes a whole name, which FIND needs while Exact Names is on. With it off nothing is preselected, so Enter keeps a partial name as typed. The NPC whose name the player typed in full wins, otherwise the first NPC row. A quest row is never preselected, because it fills several rows at once.
 local function defaultSelection(typed)
     local wanted = typed:lower()
     local first = 0
@@ -215,7 +215,7 @@ local function showSuggestions(input, list, typed)
             row:Hide()
         end
     end
-    setSelection(defaultSelection(typed))
+    setSelection(TargetFinderCharDB.exactNames == false and 0 or defaultSelection(typed))
 
     local height = count * ROW_HEIGHT + CHROME
     popup:SetHeight(height)

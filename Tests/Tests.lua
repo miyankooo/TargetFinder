@@ -98,6 +98,7 @@ check("targets aliased to live table", TargetFinderCharDB.targets == ns.targets)
 check("Auto Apply Quest NPCs starts on", TargetFinderCharDB.questNpcs == true)
 check("Apply Raid Markers starts on", TargetFinderCharDB.raidMarkers == true)
 check("Apply Pings starts off", TargetFinderCharDB.pings == false)
+check("Exact Names starts on", TargetFinderCharDB.exactNames == true)
 -- the plain FIND body is the subject until the marker section turns this back on
 TargetFinderCharDB.raidMarkers = false
 check("unit menus registered", W.menuHooks["MENU_UNIT_TARGET"] ~= nil)
@@ -250,6 +251,17 @@ ns.SetPings(false)
 check("unticking drops the ping line", TargetFinderCharDB.pings == false and W.macros["FIND"].body:find("/ping", 1, true) == nil,
       W.macros["FIND"].body)
 TargetFinderCharDB.raidMarkers = false
+ns.WipeTargets(); ns.WriteFinderMacro()
+
+section("Exact Names picks /targetexact or /target")
+ns.WipeTargets()
+ns.targets[1] = ns.MakeEntry("Alpha"); ns.targets[2] = ns.MakeEntry("Beta")
+ns.SetExactNames(false)
+check("unticked, the rows use /target, so part of a name matches", TargetFinderCharDB.exactNames == false
+      and W.macros["FIND"].body == OPEN .. "/target Beta\n/target Alpha", (W.macros["FIND"].body:gsub("\n", "|")))
+ns.SetExactNames(true)
+check("ticked, they use /targetexact again", TargetFinderCharDB.exactNames == true
+      and W.macros["FIND"].body == OPEN .. "/targetexact Beta\n/targetexact Alpha", (W.macros["FIND"].body:gsub("\n", "|")))
 ns.WipeTargets(); ns.WriteFinderMacro()
 
 section("secret identity guard")
@@ -835,6 +847,12 @@ check("add is a Blizzard panel button", row1.addBtn.template == "UIPanelButtonTe
 row1.input.scripts.OnEnter(row1.input)
 check("the name box explains itself", W.tooltip[1] == "title:Row 1"
       and W.tooltip[2] == "normal:Type an NPC or player name and press Enter. FIND matches whole names only.", table.concat(W.tooltip, " / "))
+TargetFinderCharDB.exactNames = false
+row1.input.scripts.OnEnter(row1.input)
+check("with Exact Names off it says part of a name matches",
+      W.tooltip[2] == "normal:Type an NPC or player name and press Enter. FIND also matches part of a name, such as Murloc for Murloc Forager.",
+      W.tooltip[2])
+TargetFinderCharDB.exactNames = true
 row1.addBtn.scripts.OnEnter(row1.addBtn)
 check("Add explains itself", W.tooltip[1] == "title:Add" and W.tooltip[2] == "normal:Saves the typed name in this row. Enter does the same.",
       table.concat(W.tooltip, " / "))
@@ -965,6 +983,27 @@ check("the tooltip says FIND pings its pick", W.tooltip[1] == "title:Apply Pings
       and #W.tooltip == 2, table.concat(W.tooltip, " / "))
 TargetFinderCharDB.pings = false
 
+section("the Exact Names box")
+local exactBox = panel.exactBox
+check("a native checkbox", exactBox and exactBox.template == "CheckboxWithLabelTemplate")
+check("it is labelled", exactBox.Text.text == "Exact Names", exactBox.Text.text)
+local exactAnchor = exactBox.points[1]
+check("it follows the ping box's label one padding step on", exactAnchor.point == "LEFT" and exactAnchor.rel == pingBox.Text
+      and exactAnchor.relPoint == "RIGHT" and exactAnchor.x == PADDING and exactAnchor.y == 0)
+ns.RefreshPanel()
+check("it mirrors the setting", exactBox.checked == true)
+exactBox:SetChecked(false)
+exactBox.scripts.OnClick(exactBox)
+check("unticking saves the choice and rewrites FIND", TargetFinderCharDB.exactNames == false)
+exactBox:SetChecked(true)
+exactBox.scripts.OnClick(exactBox)
+check("ticking saves it again", TargetFinderCharDB.exactNames == true)
+exactBox.scripts.OnEnter(exactBox)
+check("the tooltip says what each state matches", W.tooltip[1] == "title:Exact Names"
+      and W.tooltip[2] == "normal:FIND targets only NPCs whose whole name matches a row."
+      and W.tooltip[3] == "normal:Untick to let part of a name match too, such as Murloc for Murloc Forager."
+      and #W.tooltip == 3, table.concat(W.tooltip, " / "))
+
 section("FIND comes from the window icon")
 local dragIcon
 for _, f in ipairs(W.created) do
@@ -1091,6 +1130,16 @@ input:SetText("kob")
 input.scripts.OnTextChanged(input, true)
 input.scripts.OnTabPressed(input)
 check("Tab completes the selected NPC without storing it", input.text == "Kobold Miner" and pop.shown == false, input.text)
+
+TargetFinderCharDB.exactNames = false
+ns.WipeTargets()
+input:SetText("Kob")
+input.scripts.OnTextChanged(input, true)
+check("with Exact Names off nothing is preselected", pop.shown == true and not firstRow.locked and not secondRow.locked)
+input.scripts.OnEnterPressed(input)
+check("so Enter keeps the partial name", ns.targets[input.slot] and ns.targets[input.slot].name == "Kob",
+      ns.targets[input.slot] and ns.targets[input.slot].name)
+TargetFinderCharDB.exactNames = true
 
 ns.WipeTargets()
 input:SetText("trouble")
