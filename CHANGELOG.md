@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/miyankooo/TargetFinder/compare/v1.3.0...v1.4.0) (2026-11-13)
+
+
+### Features
+
+* Exact Names box lets FIND match part of a name with /target instead of /targetexact ([af66fdf](https://github.com/miyankooo/TargetFinder/commit/af66fdf671ee6291b6469ec6b842dcb3eadc8df4))
+
 ## [1.3.0](https://github.com/miyankooo/TargetFinder/compare/v1.2.0...v1.3.0) (2026-11-11)
 
 
