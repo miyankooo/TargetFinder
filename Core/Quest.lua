@@ -264,7 +264,16 @@ local function zoneMaps(lib)
     return zones
 end
 
--- The player's position in QuestieDB's area IDs. A map the tables cannot place, such as an instance or a map newer than QuestieDB, gives nil.
+-- The world vectors of one map unit east and one unit south, read from the map's corners. A zone map is flat, so the pair measures every point on it. Nil when the map has no world position.
+local function yardsPerUnit(uiMapId)
+    local _, origin = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(0, 0))
+    local _, east = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(1, 0))
+    local _, south = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(0, 1))
+    if not (origin and east and south) then return nil end
+    return { ex = east.x - origin.x, ey = east.y - origin.y, sx = south.x - origin.x, sy = south.y - origin.y }
+end
+
+-- The player's position in QuestieDB's area IDs, its map position and the yard vectors of its map. A map the tables cannot place, such as an instance or a map newer than QuestieDB, gives nil.
 local function playerWhere(lib)
     local uiMapId = C_Map.GetBestMapForUnit("player")
     if not uiMapId then return nil end
@@ -272,26 +281,33 @@ local function playerWhere(lib)
     local areaId = maps and maps.areaByMap[uiMapId]
     if not areaId then return nil end
 
-    local where = { areaId = areaId, parentId = maps.parentByArea[areaId] }
+    local where = { areaId = areaId, parentId = maps.parentByArea[areaId], yards = yardsPerUnit(uiMapId) }
     local pos = C_Map.GetPlayerMapPosition(uiMapId, "player")
     if pos then
-        where.x, where.y = pos.x * 100, pos.y * 100
+        where.x, where.y = pos.x, pos.y
     end
     return where
 end
 
--- Squared distance to the nearest spawn in the player's zone or its parent, nil when the NPC never spawns there. QuestieDB spawns are map percentages in the running client's own frame (it ships Forever's already converted), so they line up with C_Map positions scaled by 100.
+-- Yards from the player to a point given as QuestieDB's map percentages.
+local function yardsTo(where, percentX, percentY)
+    local dx, dy = percentX / 100 - where.x, percentY / 100 - where.y
+    local ex = dx * where.yards.ex + dy * where.yards.sx
+    local ey = dx * where.yards.ey + dy * where.yards.sy
+    return math.sqrt(ex * ex + ey * ey)
+end
+
+-- Yards to the nearest spawn in the player's zone or its parent, nil when the NPC never spawns there or the player's place is not known. QuestieDB spawns are map percentages in the running client's own frame (it ships Forever's already converted), so they line up with the player's map position.
 local function spawnDistance(lib, npcId, where)
+    if not where.x or not where.yards then return nil end
     local spawns = lib.Npc.Get(npcId, "spawns")
     if type(spawns) ~= "table" then return nil end
     local zoneSpawns = spawns[where.areaId] or (where.parentId and spawns[where.parentId])
     if type(zoneSpawns) ~= "table" then return nil end
-    if not where.x then return 0 end
     local best
     for _, coord in ipairs(zoneSpawns) do
         if type(coord) == "table" and coord[1] and coord[2] then
-            local dx, dy = coord[1] - where.x, coord[2] - where.y
-            local d = dx * dx + dy * dy
+            local d = yardsTo(where, coord[1], coord[2])
             if not best or d < best then best = d end
         end
     end
@@ -346,7 +362,7 @@ local function nearbyQuestNpcs()
         elseif where then
             dist = spawnDistance(lib, npcId, where)
         end
-        if not dist then return end
+        if not dist or dist > ns.NEARBY_YARDS then return end
         local entry = { name = name, dist = dist, kind = kind, quest = true }
         entries[#entries + 1] = entry
         seen[name] = entry
@@ -441,10 +457,9 @@ end
 local function syncQuestNpcs(full, manual)
     if not ns.QuestDataReady() then return end
     local following = TargetFinderCharDB.questNpcs or manual
-    if full and not following then return end
     if not following and not ns.HasQuestEntries() then return end
     local open
-    if not full then
+    if not full or not following then
         open = ns.OpenQuestNpcNames()
         if not open then return end
     end

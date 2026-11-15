@@ -373,7 +373,12 @@ C_QuestLog = {
     GetInfo = function() error("quest log read by index") end,
     GetNumQuestLogEntries = function() error("quest log read by index") end,
 }
-C_Map = { GetBestMapForUnit = function() return nil end }
+-- a zone map of 1000 yards to the unit, so one percent of the map is 10 yards
+C_Map = {
+    GetBestMapForUnit = function() return nil end,
+    GetWorldPosFromMapPos = function(_, p) return 1, { x = p.x * 1000, y = p.y * 1000 } end,
+}
+function CreateVector2D(x, y) return { x = x, y = y } end
 Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }
 GENERAL_MACROS = "General Macros"
 UNKNOWN = "Unknown"

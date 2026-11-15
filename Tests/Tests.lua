@@ -475,13 +475,13 @@ local function fakeQuestieDB()
     local npcs = {
         [1] = { name = "Done Wolf", spawns = { [12] = { {50, 50} } } },
         [2] = { name = "Kobold Miner", spawns = { [12] = { {52, 52} } } },
-        [3] = { name = "Kobold Looter", spawns = { [12] = { {90, 90} } } },
+        [3] = { name = "Kobold Looter", spawns = { [12] = { {53, 50} } } },
         [4] = { name = "Quest Giver", spawns = { [12] = { {50, 51} } } },
         [5] = { name = "Turn In Guy", spawns = { [12] = { {51, 51} } } },
         [6] = { name = "Kobold Far Away", spawns = { [40] = { {50, 50} } } },
         [7] = { name = "Kobold Tunneler", spawns = { [12] = { {50, 50} } } },
-        [8] = { name = "Crate Hauler", spawns = { [12] = { {95, 95} } } },
-        [9] = { name = "Looter" },
+        [8] = { name = "Crate Hauler", spawns = { [12] = { {54, 50} } } },
+        [9] = { name = "Looter", spawns = { [12] = { {90, 90} } } },
     }
     -- objectives by type: creatures Done Wolf and Kobold Miner, then item 10
     local quests = {
@@ -489,8 +489,8 @@ local function fakeQuestieDB()
                   objectives = { { {1, nil, 0}, {2, nil, 0} }, nil, { {10, nil, 0} } } },
         [101] = { name = "A Letter", finishedBy = { {5} } },
     }
-    -- item 10 also comes out of the crate item 11, which Crate Hauler drops
-    local items = { [10] = { npcDrops = { 3, 6 }, itemDrops = { 11 } }, [11] = { npcDrops = { 8 } } }
+    -- item 10 also comes out of the crate item 11, which Crate Hauler drops; Looter drops it across the zone
+    local items = { [10] = { npcDrops = { 3, 6, 9 }, itemDrops = { 11 } }, [11] = { npcDrops = { 8 } } }
     local state = { nameReads = 0 }
     local function entity(rows, countNames)
         local ids = {}
@@ -744,6 +744,36 @@ check("an unsupported QuestieDB is named in the line", chatHas("This QuestieDB v
 _G.LibQuestieDB.RequireContract = supported
 ns.WipeTargets()
 TargetFinderCharDB.questNpcs = true
+
+section("turn-ins drop the quest rows with Auto Apply Quest NPCs off too")
+local savedQuest = W.questLog[100]
+TargetFinderCharDB.questNpcs = false
+ns.WipeTargets()
+ns.TrackQuest(100)
+RunTimers()
+check("a pick fills the quest rows with Auto Apply off", ns.SlotForName("Kobold Miner") ~= nil)
+W.questLog[100] = nil
+questEvent("QUEST_REMOVED", 100)
+RunTimers()
+check("the turn-in drops them without a right-click", questEntries() == 0, questEntries())
+W.questLog[100] = savedQuest
+questEvent("QUEST_ACCEPTED", 100)
+TargetFinderCharDB.questNpcs = true
+ns.WipeTargets()
+
+section("quest NPCs must be close by")
+W.chat = {}
+zoneChange()
+check("the quest is back in the set", questEntries() == 3, questEntries())
+check("a quest NPC across the zone is not taken", ns.SlotForName("Looter") == nil)
+check("quest NPCs within reach are", ns.SlotForName("Kobold Miner") ~= nil and ns.SlotForName("Kobold Looter") ~= nil
+      and ns.SlotForName("Crate Hauler") ~= nil)
+ns.WipeTargets()
+C_Map.GetPlayerMapPosition = function() return nil end
+zoneChange()
+check("without the player's position only NPCs in view are taken", questEntries() == 0, questEntries())
+C_Map.GetPlayerMapPosition = function() return { x = 0.5, y = 0.5 } end
+ns.WipeTargets()
 
 section("the quest set follows accepts, removals and loading screens")
 local function suggestsLetter()
