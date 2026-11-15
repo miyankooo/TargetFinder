@@ -4,15 +4,20 @@ local MAX_TARGETS = ns.MAX_TARGETS
 
 local KINDS = { [ns.KIND_KILL] = true, [ns.KIND_DROP] = true, [ns.KIND_TURNIN] = true }
 
--- Sparse slot table indexed 1..MAX_TARGETS, nil meaning empty, each entry { name, quest, kind }. Created once and only ever mutated, because every module captures this reference at load time and a reassignment would leave them pointing at the old table.
+-- Sparse slot table indexed 1..MAX_TARGETS, nil meaning empty, each entry { name, quest, kind, pinned }. Created once and only ever mutated, because every module captures this reference at load time and a reassignment would leave them pointing at the old table.
 local targets = {}
 
 ns.targets = targets
 
--- quest marks an entry that came from the quest log, so it may drop off once its objective is done. kind picks its row icon. Typed entries leave both nil and are never dropped.
-function ns.MakeEntry(name, quest, kind)
+-- quest marks an entry that came from the quest log, so it may drop off once its objective is done. kind picks its row icon. pinned marks a quest entry the player picked from a quest suggestion, which stays however far away it is until no quest needs it. Typed entries leave all three nil and are never dropped.
+function ns.MakeEntry(name, quest, kind, pinned)
     local fromQuest = quest == true or nil
-    return { name = name, quest = fromQuest, kind = fromQuest and KINDS[kind] and kind or nil }
+    return {
+        name = name,
+        quest = fromQuest,
+        kind = fromQuest and KINDS[kind] and kind or nil,
+        pinned = fromQuest and pinned == true or nil,
+    }
 end
 
 function ns.FirstEmptySlot()
@@ -51,7 +56,7 @@ function ns.AdoptSaved(saved)
         for slot = 1, MAX_TARGETS do
             local entry = saved[slot]
             if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
-                targets[slot] = ns.MakeEntry(entry.name, entry.quest, entry.kind)
+                targets[slot] = ns.MakeEntry(entry.name, entry.quest, entry.kind, entry.pinned)
             end
         end
     end

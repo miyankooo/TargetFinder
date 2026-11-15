@@ -482,12 +482,19 @@ local function fakeQuestieDB()
         [7] = { name = "Kobold Tunneler", spawns = { [12] = { {50, 50} } } },
         [8] = { name = "Crate Hauler", spawns = { [12] = { {54, 50} } } },
         [9] = { name = "Looter", spawns = { [12] = { {90, 90} } } },
+        -- 20 yards east of the player, but listed on the neighbouring zone's map
+        [10] = { name = "Border Kobold", spawns = { [41] = { {4, 50} } } },
+        -- the player's own map coordinates, but on another continent
+        [11] = { name = "Overseas Kobold", spawns = { [42] = { {50, 50} } } },
+        -- right where the player stands, but QuestieDB marks the spawn as inside an instance
+        [12] = { name = "Instance Kobold", spawns = { [12] = { {-1, -1} } } },
     }
     -- objectives by type: creatures Done Wolf and Kobold Miner, then item 10
     local quests = {
         [100] = { name = "Kobold Trouble", startedBy = { {4} }, finishedBy = { {5} },
                   objectives = { { {1, nil, 0}, {2, nil, 0} }, nil, { {10, nil, 0} } } },
         [101] = { name = "A Letter", finishedBy = { {5} } },
+        [102] = { name = "Kobolds Abroad", finishedBy = { {5} }, objectives = { { {10, nil, 0}, {11, nil, 0}, {12, nil, 0} } } },
     }
     -- item 10 also comes out of the crate item 11, which Crate Hauler drops; Looter drops it across the zone
     local items = { [10] = { npcDrops = { 3, 6, 9 }, itemDrops = { 11 } }, [11] = { npcDrops = { 8 } } }
@@ -512,13 +519,14 @@ local function fakeQuestieDB()
         Support = { Get = function(name)
             if name ~= "ZoneDB" then return nil end
             return { private = {
-                uiMapIdToAreaId = "return { [1414] = 10073, [1429] = 9 }",
-                uiMapIdToAreaIdOverride = "return { [1429] = 12 }",
-                subZoneToParentZone = "return {}",
-                subZoneToParentZoneOverride = "return {}",
+                areaIdToUiMapId = "return { [9] = 1429, [12] = 1426, [40] = 1430, [41] = 1431, [42] = 1432 }",
+                areaIdToUiMapIdOverride = "return { [12] = 1429, [0] = 0 }",
             } }
         end },
     }
+    -- the maps in the world: Elwynn's base entry 1426 lies far east, so only the override's 1429 places area 12; the
+    -- far zone 1430 lies 5000 yards east, the neighbour 1431 starts 480 yards east, and 1432 is on another continent
+    W.mapPlaces = { [1426] = { x = 9000 }, [1430] = { x = 5000 }, [1431] = { x = 480 }, [1432] = { continent = 2 } }
     -- the player holds quest 100: the first kill objective is done, the second and the item are open
     W.questLog = { [100] = { complete = false, rows = {
         { finished = true, numFulfilled = 8, numRequired = 8 },
@@ -581,6 +589,8 @@ setRows(true, false, false)
 W.questLog[101] = { complete = false, rows = {} }
 local letter = ns.QuestNpcs(101)
 check("a quest with no objectives goes straight to its turn-in NPC", #letter == 1 and letter[1].name == "Turn In Guy")
+W.questLog[101] = { complete = false, rows = { { finished = false, numFulfilled = 0, numRequired = 1 } } }
+check("a quest QuestieDB lists no objectives for waits while the game counts an open row", #ns.QuestNpcs(101) == 0)
 W.questLog[101] = nil
 
 section("login builds the NPC name index and watches the quest events")
@@ -591,6 +601,7 @@ local questEvents = questEventFrame()
 check("accepts, removals, loading screens, zones and progress are watched", questEvents ~= nil
       and questEvents.events.QUEST_ACCEPTED and questEvents.events.QUEST_REMOVED and questEvents.events.PLAYER_ENTERING_WORLD
       and questEvents.events.ZONE_CHANGED and questEvents.events.ZONE_CHANGED_NEW_AREA and questEvents.events.QUEST_LOG_UPDATE)
+check("and the player starting and stopping to move", questEvents.events.PLAYER_STARTED_MOVING and questEvents.events.PLAYER_STOPPED_MOVING)
 
 local function questEntries()
     local n = 0
@@ -665,15 +676,23 @@ zoneChange()
 check("every row done counts before the game's flag", questEntries() == 1 and ns.SlotForName("Turn In Guy") ~= nil)
 setRows(true, false, false)
 
+-- a cave or subzone map QuestieDB does not list: the game's own map still places the player in the world
 C_Map.GetBestMapForUnit = function() return 999 end
+ns.WipeTargets()
+ns.targets[3] = ns.MakeEntry("Typed Wolf")
+zoneChange()
+check("a map QuestieDB does not list still places the player", questEntries() == 3 and ns.SlotForName("Kobold Miner") ~= nil, questEntries())
+C_Map.GetBestMapForUnit = function() return 1429 end
+-- inside an instance the game gives no map position
+C_Map.GetPlayerMapPosition = function() return nil end
 W.units = { nameplate1 = { name = "Kobold Looter" } }
 W.chat = {}
 questEvent("ZONE_CHANGED_NEW_AREA")
 local nearbyOk, nearbyErr = pcall(RunTimers)
-check("a map QuestieDB cannot place does not raise", nearbyOk, nearbyErr)
+check("a place with no map position does not raise", nearbyOk, nearbyErr)
 check("nameplates still count as nearby", questEntries() == 1 and ns.SlotForName("Kobold Looter") ~= nil, questEntries())
 check("no read failure reported", not chatHas("Could not read"))
-C_Map.GetBestMapForUnit = function() return 1429 end
+C_Map.GetPlayerMapPosition = function() return { x = 0.5, y = 0.5 } end
 W.units = {}
 zoneChange()
 
@@ -705,13 +724,18 @@ TargetFinderCharDB.questNpcs = true
 ns.WipeTargets()
 ns.targets[1] = ns.MakeEntry("Mine One")
 ns.targets[2] = ns.MakeEntry("Mine Two")
--- a quest NPC the log still needs but that is not nearby: the light sync keeps it, a full one swaps it out
+-- a quest NPC the log still needs but that is out of reach: an objective update drops it, unless the player pinned it
 ns.targets[3] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP)
 local function typedHeld() return ns.targets[1].name == "Mine One" and ns.targets[2].name == "Mine Two" end
 progressTick(3, false)
 RunTimers()
-check("an objective update keeps a needed quest row", ns.SlotForName("Kobold Far Away") == 3)
-check("and the typed rows", typedHeld())
+check("an objective update drops a quest row out of reach", ns.SlotForName("Kobold Far Away") == nil)
+check("and keeps the typed rows", typedHeld())
+ns.targets[8] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP, true)
+progressTick(3, false)
+RunTimers()
+check("a pinned quest row out of reach stays", ns.SlotForName("Kobold Far Away") == 8)
+ns.targets[8] = nil
 -- quest 999 is not in the game's log; accepting and then losing it only triggers the sync
 for _, case in ipairs({ { event = "QUEST_ACCEPTED", label = "accepting" }, { event = "QUEST_REMOVED", label = "turning in or abandoning" } }) do
     ns.targets[3] = ns.MakeEntry("Kobold Far Away", true, ns.KIND_DROP)
@@ -775,6 +799,60 @@ check("without the player's position only NPCs in view are taken", questEntries(
 C_Map.GetPlayerMapPosition = function() return { x = 0.5, y = 0.5 } end
 ns.WipeTargets()
 
+section("reach is measured in the world, across zone borders")
+W.questLog[102] = { complete = false, rows = {
+    { finished = false, numFulfilled = 0, numRequired = 1 },
+    { finished = false, numFulfilled = 0, numRequired = 1 },
+    { finished = false, numFulfilled = 0, numRequired = 1 },
+} }
+questEvent("QUEST_ACCEPTED", 102)
+RunTimers()
+check("a quest NPC listed on the neighbouring zone's map counts when close", ns.SlotForName("Border Kobold") ~= nil)
+check("the same map coordinates on another continent do not", ns.SlotForName("Overseas Kobold") == nil)
+check("a spawn inside an instance does not", ns.SlotForName("Instance Kobold") == nil)
+check("the override wins over the base area map", ns.SlotForName("Kobold Miner") ~= nil)
+W.questLog[102] = nil
+questEvent("QUEST_REMOVED", 102)
+RunTimers()
+check("turning the quest in drops its NPC", ns.SlotForName("Border Kobold") == nil)
+
+section("the quest rows follow the player")
+local spotX, spotY = 0.5, 0.5
+C_Map.GetPlayerMapPosition = function() return { x = spotX, y = spotY } end
+ns.WipeTargets()
+ns.targets[4] = ns.MakeEntry("Typed Wolf")
+zoneChange()
+W.tickers = {}
+questEvent("PLAYER_STARTED_MOVING")
+check("moving starts one ticker a second", #LiveTickers() == 1 and LiveTickers()[1].seconds == 1, #LiveTickers())
+questEvent("PLAYER_STARTED_MOVING")
+check("never a second one", #LiveTickers() == 1, #LiveTickers())
+W.timers = {}
+spotX = 0.51
+Tick()
+check("ten yards measure nothing", #W.timers == 0, #W.timers)
+spotX, spotY = 0.9, 0.9
+Tick()
+check("the sync waits for the next frame", ns.SlotForName("Kobold Miner") ~= nil)
+RunTimers()
+check("quest NPCs left behind leave", ns.SlotForName("Kobold Miner") == nil and ns.SlotForName("Kobold Looter") == nil
+      and ns.SlotForName("Crate Hauler") == nil)
+check("quest NPCs now in reach arrive", ns.SlotForName("Looter") ~= nil)
+check("typed names stay", ns.SlotForName("Typed Wolf") == 4)
+spotX, spotY = 0.5, 0.5
+questEvent("PLAYER_STOPPED_MOVING")
+check("stopping ends the ticker", #LiveTickers() == 0, #LiveTickers())
+RunTimers()
+check("and measures once more", ns.SlotForName("Kobold Miner") ~= nil and ns.SlotForName("Looter") == nil)
+TargetFinderCharDB.questNpcs = false
+spotX, spotY = 0.9, 0.9
+W.timers = {}
+questEvent("PLAYER_STOPPED_MOVING")
+check("with Auto Apply off moving measures nothing", #W.timers == 0, #W.timers)
+TargetFinderCharDB.questNpcs = true
+spotX, spotY = 0.5, 0.5
+ns.WipeTargets()
+
 section("the quest set follows accepts, removals and loading screens")
 local function suggestsLetter()
     for _, r in ipairs(ns.FindSuggestions("letter")) do if r.type == "quest" then return true end end
@@ -818,6 +896,22 @@ RunTimers()
 check("the quest's NPCs fill the list", ns.SlotForName("Kobold Miner") ~= nil)
 check("the pick creates FIND", W.macros["FIND"] ~= nil and W.macros["FIND"].body:match("/targetexact Kobold Miner") ~= nil,
       W.macros["FIND"] and W.macros["FIND"].body)
+check("a picked quest's rows are pinned", ns.targets[ns.SlotForName("Kobold Far Away")].pinned == true)
+zoneChange()
+check("a pinned row out of reach survives a full sync", ns.SlotForName("Kobold Far Away") ~= nil)
+check("a pin survives a reload", ns.AdoptSaved({ { name = "Kobold Far Away", quest = true, kind = ns.KIND_DROP, pinned = true } })[1].pinned == true)
+check("only a quest entry can be pinned", ns.MakeEntry("Typed", nil, nil, true).pinned == nil)
+ns.WipeTargets()
+ns.TrackQuest(100)
+RunTimers()
+local pinnedQuest = W.questLog[100]
+W.questLog[100] = nil
+questEvent("QUEST_REMOVED", 100)
+RunTimers()
+check("pinned rows leave once no quest needs them", ns.SlotForName("Kobold Far Away") == nil and questEntries() == 0, questEntries())
+W.questLog[100] = pinnedQuest
+questEvent("QUEST_ACCEPTED", 100)
+RunTimers()
 
 section("panel is a native ButtonFrameTemplate window")
 -- the sizes the panel is built from

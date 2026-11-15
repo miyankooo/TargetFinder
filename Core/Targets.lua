@@ -77,16 +77,16 @@ local function listSignature()
     return table.concat(names, "\n")
 end
 
--- Quest entries follow the quest log without a chat line. With open, the names quests still need, only quest entries outside it leave; without it every quest entry makes way. wanted, best first, then fills the free slots. Typed names keep their slots. byPlayer marks a quest picked in the window, which shows the combat notice. A list that did not change still writes while FIND is missing, so saved quest rows get their FIND on the first sync.
-function ns.SyncQuestEntries(wanted, open, byPlayer)
+-- Quest entries follow the quest log without a chat line. With keep, the quest entries named in it hold their slots and the others leave; without it every quest entry makes way. wanted, best first, then fills the free slots. Typed names keep their slots. byPlayer marks a quest picked in the window, which shows the combat notice. A list that did not change still writes while FIND is missing, so saved quest rows get their FIND on the first sync.
+function ns.SyncQuestEntries(wanted, keep, byPlayer)
     local before = listSignature()
     for slot = 1, MAX_TARGETS do
         local entry = ns.targets[slot]
-        if entry and entry.quest and not (open and open[entry.name]) then ns.targets[slot] = nil end
+        if entry and entry.quest and not (keep and keep[entry.name]) then ns.targets[slot] = nil end
     end
     for _, item in ipairs(wanted) do
         local slot = not ns.SlotForName(item.name) and ns.FirstEmptySlot()
-        if slot then ns.targets[slot] = ns.MakeEntry(item.name, true, item.kind) end
+        if slot then ns.targets[slot] = ns.MakeEntry(item.name, true, item.kind, item.pinned) end
     end
     if listSignature() ~= before or GetMacroIndexByName(ns.FIND_MACRO) == 0 then ns.WriteFinderMacro(false, not byPlayer) end
 end

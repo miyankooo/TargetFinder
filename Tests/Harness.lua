@@ -362,7 +362,23 @@ C_Secrets = {
     end,
 }
 
-C_Timer = { After = function(_, fn) W.timers = W.timers or {}; W.timers[#W.timers+1] = fn end }
+-- NewTicker keeps its callback in W.tickers until cancelled; Tick() runs every live one once
+C_Timer = {
+    After = function(_, fn) W.timers = W.timers or {}; W.timers[#W.timers+1] = fn end,
+    NewTicker = function(seconds, fn)
+        local ticker = { seconds = seconds, fn = fn }
+        function ticker:Cancel() self.cancelled = true end
+        W.tickers = W.tickers or {}
+        W.tickers[#W.tickers+1] = ticker
+        return ticker
+    end,
+}
+function LiveTickers()
+    local live = {}
+    for _, t in ipairs(W.tickers or {}) do if not t.cancelled then live[#live+1] = t end end
+    return live
+end
+function Tick() for _, t in ipairs(LiveTickers()) do t.fn() end end
 function RunTimers() local t = W.timers or {}; W.timers = {}; for _, fn in ipairs(t) do fn() end end
 
 -- the game's quest log, read by quest ID only: the index API hides quests under collapsed headers
@@ -373,10 +389,17 @@ C_QuestLog = {
     GetInfo = function() error("quest log read by index") end,
     GetNumQuestLogEntries = function() error("quest log read by index") end,
 }
--- a zone map of 1000 yards to the unit, so one percent of the map is 10 yards
+-- every map is 1000 yards to the unit, so one percent of a map is 10 yards; W.mapPlaces moves a map's top-left
+-- corner east by x yards and onto another continent, and a map placed false has no world position
+W.mapPlaces = {}
 C_Map = {
     GetBestMapForUnit = function() return nil end,
-    GetWorldPosFromMapPos = function(_, p) return 1, { x = p.x * 1000, y = p.y * 1000 } end,
+    GetWorldPosFromMapPos = function(map, p)
+        local place = W.mapPlaces[map]
+        if place == false then return nil end
+        place = place or {}
+        return place.continent or 1, { x = (place.x or 0) + p.x * 1000, y = p.y * 1000 }
+    end,
 }
 function CreateVector2D(x, y) return { x = x, y = y } end
 Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }

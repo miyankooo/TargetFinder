@@ -101,11 +101,10 @@ local function rowDone(row)
     return type(row) == "table" and row.finished == true
 end
 
--- The game's own completion flag, or every objective row done before the flag catches up. A quest QuestieDB lists no objectives for, a delivery or talk-to quest, is ready from the start.
+-- The game's own completion flag, or every objective row done before the flag catches up. Only a quest neither the game nor QuestieDB lists objectives for, a delivery or talk-to quest, is ready from the start, so a quest QuestieDB knows no objectives for never offers its turn-in NPC while the game still counts an open row.
 local function readyToTurnIn(questId, objectives, rows)
     if C_QuestLog.IsComplete(questId) then return true end
-    if #objectives == 0 then return true end
-    if #rows == 0 then return false end
+    if #rows == 0 then return #objectives == 0 end
     for _, row in ipairs(rows) do
         if not rowDone(row) then return false end
     end
@@ -231,8 +230,8 @@ local function questLogNpcNames(lib, log)
     return collector.sorted()
 end
 
--- QuestieDB's zone tables, decoded once: the uiMapID-to-area and subzone-to-parent maps Questie builds the same way in its ZoneDB (Database/Zones/zoneDB.lua:65-100). Each ships as a Lua source string with an override table that wins. The chunks run in an empty environment, since they are plain table literals.
-local zones
+-- QuestieDB's area-to-map table, decoded once. An NPC's spawns are listed per area ID as percentages of that area's map, the one this table names, so Northshire Valley's spawns sit on the Elwynn Forest map. It ships as a Lua source string with an override table that wins. The chunks run in an empty environment, since they are plain table literals.
+local mapByArea
 
 local function decoded(source)
     if type(source) == "table" then return source end
@@ -252,63 +251,69 @@ local function merged(base, override)
     return map
 end
 
-local function zoneMaps(lib)
-    if zones then return zones end
+local function areaMaps(lib)
+    if mapByArea then return mapByArea end
     local support = type(lib.Support) == "table" and type(lib.Support.Get) == "function" and lib.Support.Get("ZoneDB")
     local tables = type(support) == "table" and support.private
     if type(tables) ~= "table" then return nil end
-    zones = {
-        areaByMap = merged(tables.uiMapIdToAreaId, tables.uiMapIdToAreaIdOverride),
-        parentByArea = merged(tables.subZoneToParentZone, tables.subZoneToParentZoneOverride),
-    }
-    return zones
+    mapByArea = merged(tables.areaIdToUiMapId, tables.areaIdToUiMapIdOverride)
+    return mapByArea
 end
 
--- The world vectors of one map unit east and one unit south, read from the map's corners. A zone map is flat, so the pair measures every point on it. Nil when the map has no world position.
-local function yardsPerUnit(uiMapId)
-    local _, origin = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(0, 0))
+-- Each map's place in the world: its continent, the world point of its top-left corner, and the world vectors of one map unit east and one unit south. A zone map is flat, so these place every point on it in yards. False for a map with no world position. Maps never move, so each is read once.
+local mapFrames = {}
+
+local function mapFrame(uiMapId)
+    local frame = mapFrames[uiMapId]
+    if frame ~= nil then return frame end
+    frame = false
+    local continent, origin = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(0, 0))
     local _, east = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(1, 0))
     local _, south = C_Map.GetWorldPosFromMapPos(uiMapId, CreateVector2D(0, 1))
-    if not (origin and east and south) then return nil end
-    return { ex = east.x - origin.x, ey = east.y - origin.y, sx = south.x - origin.x, sy = south.y - origin.y }
-end
-
--- The player's position in QuestieDB's area IDs, its map position and the yard vectors of its map. A map the tables cannot place, such as an instance or a map newer than QuestieDB, gives nil.
-local function playerWhere(lib)
-    local uiMapId = C_Map.GetBestMapForUnit("player")
-    if not uiMapId then return nil end
-    local maps = zoneMaps(lib)
-    local areaId = maps and maps.areaByMap[uiMapId]
-    if not areaId then return nil end
-
-    local where = { areaId = areaId, parentId = maps.parentByArea[areaId], yards = yardsPerUnit(uiMapId) }
-    local pos = C_Map.GetPlayerMapPosition(uiMapId, "player")
-    if pos then
-        where.x, where.y = pos.x, pos.y
+    if continent and origin and east and south then
+        frame = {
+            continent = continent, x = origin.x, y = origin.y,
+            ex = east.x - origin.x, ey = east.y - origin.y, sx = south.x - origin.x, sy = south.y - origin.y,
+        }
     end
-    return where
+    mapFrames[uiMapId] = frame
+    return frame
 end
 
--- Yards from the player to a point given as QuestieDB's map percentages.
-local function yardsTo(where, percentX, percentY)
-    local dx, dy = percentX / 100 - where.x, percentY / 100 - where.y
-    local ex = dx * where.yards.ex + dy * where.yards.sx
-    local ey = dx * where.yards.ey + dy * where.yards.sy
-    return math.sqrt(ex * ex + ey * ey)
+-- A point given as fractions of a map, in world yards.
+local function toWorld(frame, u, v)
+    return frame.x + u * frame.ex + v * frame.sx, frame.y + u * frame.ey + v * frame.sy
 end
 
--- Yards to the nearest spawn in the player's zone or its parent, nil when the NPC never spawns there or the player's place is not known. QuestieDB spawns are map percentages in the running client's own frame (it ships Forever's already converted), so they line up with the player's map position.
-local function spawnDistance(lib, npcId, where)
-    if not where.x or not where.yards then return nil end
+-- The player's continent and world position, from whichever map the game places them on, a subzone or cave map included. Nil where the game gives no map position, such as inside an instance.
+local function playerSpot()
+    local uiMapId = C_Map.GetBestMapForUnit("player")
+    local pos = uiMapId and C_Map.GetPlayerMapPosition(uiMapId, "player")
+    local frame = pos and mapFrame(uiMapId)
+    if not frame then return nil end
+    local x, y = toWorld(frame, pos.x, pos.y)
+    return { continent = frame.continent, x = x, y = y }
+end
+
+-- Squared yards to the NPC's nearest spawn on the player's continent, whichever area lists it, so a camp just across a zone border counts too. Nil when no spawn can be placed. QuestieDB marks a spawn inside an instance as (-1, -1), which never counts.
+local function spawnDistance(lib, npcId, spot, maps)
     local spawns = lib.Npc.Get(npcId, "spawns")
     if type(spawns) ~= "table" then return nil end
-    local zoneSpawns = spawns[where.areaId] or (where.parentId and spawns[where.parentId])
-    if type(zoneSpawns) ~= "table" then return nil end
     local best
-    for _, coord in ipairs(zoneSpawns) do
-        if type(coord) == "table" and coord[1] and coord[2] then
-            local d = yardsTo(where, coord[1], coord[2])
-            if not best or d < best then best = d end
+    for areaId, coords in pairs(spawns) do
+        local uiMapId = maps[areaId]
+        local frame = type(coords) == "table" and type(uiMapId) == "number" and uiMapId > 0 and mapFrame(uiMapId)
+        if frame and frame.continent == spot.continent then
+            for _, coord in ipairs(coords) do
+                local u = type(coord) == "table" and coord[1]
+                local v = u and coord[2]
+                if type(u) == "number" and type(v) == "number" and u >= 0 and v >= 0 then
+                    local x, y = toWorld(frame, u / 100, v / 100)
+                    local dx, dy = x - spot.x, y - spot.y
+                    local d = dx * dx + dy * dy
+                    if not best or d < best then best = d end
+                end
+            end
         end
     end
     return best
@@ -339,19 +344,29 @@ local function closestByPriority(entries)
     return top
 end
 
+local REACH = ns.NEARBY_YARDS * ns.NEARBY_YARDS
+
+-- Where the quest rows were last measured from, so the movement check knows how far the player has gone since.
+local lastSpot
+
+-- One walk over the quest log: needed holds every name a quest still needs, inReach those within ns.NEARBY_YARDS of the player, and best the closest eight of them by priority.
 local function nearbyQuestNpcs()
     local lib = questDB()
     if not lib then return nil end
 
-    local where = playerWhere(lib)
+    local spot = playerSpot()
+    lastSpot = spot
+    local maps = spot and areaMaps(lib)
     local inView = nameplateNames()
-    local seen = {}
+    local needed = {}
+    local inReach = {}
     local entries = {}
 
     local function visit(npcId, kind)
         local name = npcName(lib, npcId)
         if not name then return end
-        local existing = seen[name]
+        needed[name] = true
+        local existing = inReach[name]
         if existing then
             if kind < existing.kind then existing.kind = kind end
             return
@@ -359,20 +374,20 @@ local function nearbyQuestNpcs()
         local dist
         if inView[name] then
             dist = 0
-        elseif where then
-            dist = spawnDistance(lib, npcId, where)
+        elseif maps then
+            dist = spawnDistance(lib, npcId, spot, maps)
         end
-        if not dist or dist > ns.NEARBY_YARDS then return end
+        if not dist or dist > REACH then return end
         local entry = { name = name, dist = dist, kind = kind, quest = true }
         entries[#entries + 1] = entry
-        seen[name] = entry
+        inReach[name] = entry
     end
 
     for questId in pairs(questLog(lib)) do
         forEachQuestNpc(lib, questId, visit)
     end
 
-    return closestByPriority(entries)
+    return { needed = needed, inReach = inReach, best = closestByPriority(entries) }
 end
 
 -- Quest names from the log first, then quest NPCs, then NPC index names that start with the query, then names that contain it. Prefix before substring puts the name /target can actually acquire at the top.
@@ -453,23 +468,28 @@ function ns.OpenQuestNpcNames()
     return ok and names or nil
 end
 
--- Quest entries follow the quest log, as RestedXP's targets follow the guide. A full sync, at login, in a new zone and when a quest is accepted, turned in or abandoned, swaps them for the closest NPCs the quests need; a light one, after an objective update, drops what no quest needs any more and fills free slots, so the rows hold still while the player fights. With Auto Apply Quest NPCs off only the drop runs, for NPCs added from a quest suggestion or a manual refresh. manual is the minimap right-click and /tf refresh, which fill the rows even with the box off. Names the player added are never touched: ns.SyncQuestEntries only ever removes or places quest entries.
+-- Quest entries follow the quest log and the player, as RestedXP's targets follow the guide. A full sync, at login, in a new zone and when a quest is accepted, turned in or abandoned, swaps them for the closest NPCs the quests need. A light one, after an objective update and every ns.STEP_YARDS the player moves, drops what no quest needs any more or what is out of reach, and fills free slots, so the rows still in reach hold still while the player fights. A quest entry the player pinned through a quest suggestion stays out of reach and leaves only once no quest needs it. With Auto Apply Quest NPCs off only that drop runs, for every quest entry, so a turn-in still clears its rows. manual is the minimap right-click and /tf refresh, which fill the rows even with the box off. Names the player added are never touched: ns.SyncQuestEntries only ever removes or places quest entries.
 local function syncQuestNpcs(full, manual)
     if not ns.QuestDataReady() then return end
     local following = TargetFinderCharDB.questNpcs or manual
     if not following and not ns.HasQuestEntries() then return end
-    local open
-    if not full or not following then
-        open = ns.OpenQuestNpcNames()
-        if not open then return end
-    end
-    local wanted = {}
+    local needed, wanted, keep = nil, EMPTY, {}
     if following then
-        local ok, nearby = guarded(nearbyQuestNpcs)
-        if not ok or not nearby then return end
-        wanted = nearby
+        local ok, reach = guarded(nearbyQuestNpcs)
+        if not ok or not reach then return end
+        needed, wanted = reach.needed, reach.best
+        if not full then
+            for name in pairs(reach.inReach) do keep[name] = true end
+        end
+    else
+        needed = ns.OpenQuestNpcNames()
+        if not needed then return end
     end
-    ns.SyncQuestEntries(wanted, open)
+    for slot = 1, ns.MAX_TARGETS do
+        local entry = ns.targets[slot]
+        if entry and entry.quest and needed[entry.name] and (entry.pinned or not following) then keep[entry.name] = true end
+    end
+    ns.SyncQuestEntries(wanted, keep)
 end
 
 local syncQueued, fullQueued = false, false
@@ -513,11 +533,36 @@ local function progressMoved()
     return moved
 end
 
+-- No event reports the player's position, so while the player moves a ticker checks once a second how far they went from where the rows were last measured, and every ns.STEP_YARDS it runs a light sync. It stops when the player does, so standing still costs nothing, and it only measures while Auto Apply Quest NPCs is on.
+local STEP = ns.STEP_YARDS * ns.STEP_YARDS
+local mover
+
+local function checkMoved()
+    if not TargetFinderCharDB.questNpcs then return end
+    local spot = playerSpot()
+    if not spot then return end
+    if lastSpot and spot.continent == lastSpot.continent then
+        local dx, dy = spot.x - lastSpot.x, spot.y - lastSpot.y
+        if dx * dx + dy * dy < STEP then return end
+    end
+    queueSync(false)
+end
+
 -- Accepting, turning in or abandoning a quest changes which NPCs the log needs, and so does a new zone or subzone, so those run a full sync. QUEST_REMOVED fires for a turn-in and an abandon alike. A loading screen also drops the quest set, which the sync then seeds afresh.
 local questEvents = CreateFrame("Frame")
 questEvents:SetScript("OnEvent", function(_, event, questId)
     if event == "QUEST_LOG_UPDATE" then
         if progressMoved() then queueSync(false) end
+        return
+    elseif event == "PLAYER_STARTED_MOVING" then
+        if not mover then mover = C_Timer.NewTicker(1, checkMoved) end
+        return
+    elseif event == "PLAYER_STOPPED_MOVING" then
+        if mover then
+            mover:Cancel()
+            mover = nil
+        end
+        checkMoved()
         return
     end
     if event == "QUEST_ACCEPTED" then
@@ -530,7 +575,10 @@ questEvents:SetScript("OnEvent", function(_, event, questId)
     queueSync(true)
 end)
 
-local QUEST_EVENTS = { "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_LOG_UPDATE", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA" }
+local QUEST_EVENTS = {
+    "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_LOG_UPDATE", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA",
+    "PLAYER_STARTED_MOVING", "PLAYER_STOPPED_MOVING",
+}
 
 -- Login starts the quest side: the NPC name index pass runs while the loading screen still shows, and the quest events count from here on. PLAYER_ENTERING_WORLD follows login and runs the first sync.
 function ns.WatchQuests()
@@ -575,13 +623,14 @@ function ns.RefreshQuestNpcs()
     end
 end
 
--- A quest picked from the suggestions takes the quest rows first. With Auto Apply Quest NPCs on the closest other quest NPCs fill what is left.
+-- A quest picked from the suggestions takes the quest rows first, pinned so they stay however far away they are until the quest no longer needs them. With Auto Apply Quest NPCs on the closest other quest NPCs fill what is left.
 function ns.TrackQuest(questId)
     local picks = ns.QuestNpcs(questId)
     if #picks == 0 then
         ns.Print("No NPCs found for that quest.")
         return
     end
+    for _, pick in ipairs(picks) do pick.pinned = true end
     ns.SyncQuestEntries(picks, nil, true)
     if not ns.SlotForName(picks[1].name) then
         ns.Print("The list is full. Remove a name first.")

@@ -20,6 +20,9 @@ ns.MAX_NAMEPLATES = 40
 -- A quest NPC counts as nearby within this many yards of the player, measured to its closest spawn.
 ns.NEARBY_YARDS = 60
 
+-- Moving this far from where the quest rows were last measured measures them again.
+ns.STEP_YARDS = 20
+
 -- Ascending value is ascending priority, so a lower number wins when two quests claim the same NPC. A quest entry keeps its kind for its row icon.
 --   KILL    mobs that count for a kill objective
 --   DROP    mobs that drop a required quest item

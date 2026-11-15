@@ -13,7 +13,7 @@ A WoW Forever addon that gives you one FIND button to target, raid-mark and ping
 - Apply Pings: FIND also pings the NPC it targets as your ping key does, so your group sees it. Off until you tick it.
 - Exact Names: FIND matches whole names only. Untick it to let part of a name match too, such as Murloc for Murloc Forager.
 - Up to eight names, with row 1 first. Drag a row's number to change the order. Names you add are never replaced.
-- Auto Apply Quest NPCs fills free rows with the nearby NPCs you need to kill, loot or talk to. They update when you accept, turn in or abandon a quest and when you change zones.
+- Auto Apply Quest NPCs fills free rows with the NPCs within 60 yards that you need to kill, loot or talk to. They follow you as you move, and leave when you finish an objective or turn in, abandon or accept a quest.
 - Quest and NPC names are suggested as you type.
 
 ## Usage
