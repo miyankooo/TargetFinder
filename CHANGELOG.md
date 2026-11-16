@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1](https://github.com/miyankooo/TargetFinder/compare/v1.4.0...v1.4.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* quest NPCs follow you as you move, leave once out of reach and are measured across zone borders ([fa5eec9](https://github.com/miyankooo/TargetFinder/commit/fa5eec91c4abfce4267a97249cd810de626ba585))
+* quest NPCs leave the list on turn-in, even with Auto Apply off, and only come from within 60 yards ([f8adf27](https://github.com/miyankooo/TargetFinder/commit/f8adf279839e4547463e75a7c68843d791720db7))
+
 ## [1.4.0](https://github.com/miyankooo/TargetFinder/compare/v1.3.0...v1.4.0) (2026-11-13)
 
 
