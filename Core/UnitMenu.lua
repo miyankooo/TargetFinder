@@ -35,7 +35,7 @@ local function appendMenu(_, root, context)
         label, help = "Untrack", "Takes " .. name .. " off the FIND list."
         action = function() ns.RemoveFinder(ns.SlotForName(name)) end
     else
-        label, help = "Track", "Puts " .. name .. " first on the FIND list, so FIND targets it before the rest."
+        label, help = "Find Target", "Puts " .. name .. " first on the FIND list, so FIND targets it before the rest."
         action = function() ns.AddFinder(name) end
     end
 

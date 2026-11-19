@@ -6,7 +6,7 @@ local _, ns = ...
 local POPUP_NAME = "TargetFinderSuggestions"
 local MAX_SUGGESTIONS = ns.MAX_SUGGESTIONS
 
--- Blizzard's AutoCompleteBox geometry moved onto the 4px grid: its 14px rows (AutoComplete.xml:17) become 16 so the 16px role icon fits, the 15px text inset (:21) 16, the 10px first-row and hint offsets (:52, :40) 8, the 35px chrome (AutoComplete.lua:296) 36 and the 3px edit-box overlap (AutoComplete.lua:130) 4.
+-- Blizzard's AutoCompleteBox geometry moved onto the 8px grid: its 14px rows (AutoComplete.xml:17) become 16 so the 16px role icon fits, the 15px text inset (:21) 16, the 10px first-row and hint offsets (:52, :40) 8, the 35px chrome (AutoComplete.lua:296) 36 around its 12px hint line and the 3px edit-box overlap (AutoComplete.lua:130) 4.
 local ROW_HEIGHT = 16
 local TEXT_INSET = 16
 local ROWS_TOP = 8

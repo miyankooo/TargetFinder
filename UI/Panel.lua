@@ -2,7 +2,7 @@ local _, ns = ...
 
 local MAX_TARGETS = ns.MAX_TARGETS
 
--- Sizes: spacing on the 4 px grid, the 24 px row and the 16 px inline icon.
+-- Sizes: spacing on the 8 px grid, 4 px steps for text, the 24 px row and the 16 px inline icon.
 local TIGHT = 4
 local GAP = 8
 local PADDING = 16
@@ -45,7 +45,7 @@ local function HookTooltip(frame, fill, anchor)
     frame:HookScript("OnLeave", GameTooltip_Hide)
 end
 
--- Rounds a length derived from text up to the 4 px grid.
+-- Rounds a length derived from text up to 4 px, the step text takes on the 8 px grid.
 local function Snap(length)
     return math.ceil(length / 4) * 4
 end
@@ -197,10 +197,10 @@ local PANEL_WIDTH = 400
 local ROW_PITCH = ROW + GAP
 
 -- The attic's first line says how to fill the list. The second names the next FIND step: the first name creates it, then the player places it, then presses it.
-local HELP_ADD = "Type names below or right-click a portrait to Track."
+local HELP_ADD = "Type names below or right-click a portrait to Find Target."
 local STEP_CREATE = "The first name creates your FIND macro."
 local STEP_PLACE = "Drag the icon to an action bar to place FIND."
-local STEP_PRESS = "Press FIND to target the first listed NPC in range."
+local STEP_PRESS = "Press FIND to target the first living NPC in range."
 
 -- The list's empty state. The rows fill the inset, so instead of a centred line over them the first row's own grey hint says what the list takes while nothing is listed; the attic's gold line already says how to fill it.
 local EMPTY_HINT = "NPC or player name"
@@ -210,7 +210,7 @@ local NAME_EXACT = "FIND matches whole names only."
 local NAME_PARTIAL = "FIND also matches part of a name, such as Murloc for Murloc Forager."
 local ADD_HELP = "Saves the typed name in this row. Enter does the same."
 
-local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first NPC on the list that is in range."
+local FIND_HELP = "Target Finder creates this macro and updates it whenever the list changes. Drag it to an action bar, then press it to target the first living NPC on the list that is in range."
 
 local QUEST_LABEL = "Auto Apply Quest NPCs"
 local QUEST_HELP = "Fills free rows with the kill, loot and turn-in NPCs of your quests that are closest to you. They update when you accept, turn in or abandon a quest and when you change zones, and leave once done. Names you added are never replaced."
@@ -290,7 +290,7 @@ local function buildSlotInput(row, slot)
     return input
 end
 
--- Add fills a fixed trailing column, so the input's right edge never moves. The X sits one tight step after the input instead of in that column, so it reads as part of the entry. The remove button is Blizzard's close button without its scripts, because the stock close handler would hide the whole row.
+-- Add and the X share a fixed trailing column, so the input's right edge never moves, and both stand on the column's right edge, the rows' padding from the window's right, as the icon column stands on the left. The remove button is Blizzard's close button without its scripts, because the stock close handler would hide the whole row.
 local TRAILING_WIDTH = 48
 
 local function buildRowButtons(row, slot)
@@ -306,6 +306,7 @@ local function buildRowButtons(row, slot)
 
     -- The X only shows on a stored row, so its tooltip names that row's entry, in the words of the unit menu's Untrack.
     local removeBtn = CreateRemoveButton(row)
+    removeBtn:SetPoint("RIGHT", row, "RIGHT")
     removeBtn:SetScript("OnClick", function() ns.RemoveFinder(slot) end)
     AttachTooltip(removeBtn, function(tooltip)
         local stored = ns.targets[slot]
@@ -316,7 +317,7 @@ local function buildRowButtons(row, slot)
     row.removeBtn = removeBtn
 end
 
--- Dragging a row's number moves its name to another row, the way Blizzard's lists reorder (ScrollUtil.lua:1552-1580, ConfigureDragBehavior): the dragged row fades to half, and Blizzard's drag line marks where it lands, above the row under the cursor when it moves up and below it when it moves down. The rows are no ScrollBox, so the same look is built from the same template.
+-- Dragging a row by its icon column moves its name to another row, the way Blizzard's lists reorder (ScrollUtil.lua:1552-1580, ConfigureDragBehavior): the dragged row fades to half, and Blizzard's drag line marks where it lands, above the row under the cursor when it moves up and below it when it moves down. The rows are no ScrollBox, so the same look is built from the same template.
 local DRAG_LINE_OFFSET = 3
 local dragFrom, dragTo, dragLine
 
@@ -370,19 +371,12 @@ local function fillHandleTooltip(tooltip, slot)
     GameTooltip_AddInstructionLine(tooltip, "Drag to move this name to another row.")
 end
 
--- The row number is the handle, together with the quest icon beside it, so the grip has a visible mark on every row.
+-- The handle covers the icon column and the gap after it, so a row drags by its left end, with or without a quest icon.
 local function buildRowHandle(row, slot)
-    local number = CreateText(row, GameFontNormal)
-    number:SetSize(ICON, ROW)
-    number:SetPoint("LEFT", row, "LEFT")
-    number:SetJustifyH("CENTER")
-    number:SetText(slot)
-    row.number = number
-
     local handle = CreateFrame("Button", nil, row)
     handle:SetPoint("TOPLEFT", row, "TOPLEFT")
     handle:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT")
-    handle:SetWidth(ICON + TIGHT + ICON)
+    handle:SetWidth(ICON + GAP)
     handle:RegisterForDrag("LeftButton")
     handle:SetScript("OnDragStart", function(self) startRowDrag(self, slot) end)
     handle:SetScript("OnDragStop", stopRowDrag)
@@ -399,10 +393,10 @@ local function buildSlotRow(parent, slot)
 
     buildRowHandle(row, slot)
 
-    -- The kill, loot or turn-in icon marks a row the quest log fills. A typed row leaves it empty.
+    -- The kill, loot or turn-in icon marks a row the quest log fills, in the column on the rows' left edge. A typed row leaves it empty.
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON, ICON)
-    icon:SetPoint("LEFT", row.number, "RIGHT", TIGHT, 0)
+    icon:SetPoint("LEFT", row, "LEFT")
     icon:Hide()
     row.icon = icon
 
@@ -412,7 +406,6 @@ local function buildSlotRow(parent, slot)
     -- InputBoxTemplate, which the hint box inherits, hangs only its left cap outside the box, so the box starts that far past one gap.
     row.input:SetPoint("LEFT", icon, "RIGHT", GAP + EDIT_BOX_CAP, 0)
     row.input:SetPoint("RIGHT", row.addBtn, "LEFT", -GAP, 0)
-    row.removeBtn:SetPoint("LEFT", row.input, "RIGHT", TIGHT, 0)
     row.updateState = function() updateTrailing(row, slot) end
     ns.AttachAutocomplete(row.input, row.updateState)
 

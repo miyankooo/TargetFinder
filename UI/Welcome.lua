@@ -9,10 +9,10 @@ local function SurfaceLink(label)
     return NORMAL_FONT_COLOR:WrapTextInColorCode(LinkUtil.FormatLink(LinkTypes.AddOn, "[" .. label .. "]", addonName))
 end
 
--- What it does, then the window's link and /tf for the first step. A unit menu has no control a help tip could point at, so the welcome line names Track too.
+-- What it does, then the window's link and /tf for the first step. A unit menu has no control a help tip could point at, so the welcome line names Find Target too.
 function ns.PrintWelcome()
     ns.Print("One FIND macro targets the NPCs your quests need, plus any NPC or player you add. Open the " .. SurfaceLink(ns.title)
-        .. " window or type /tf to add your first name, or right-click a portrait and pick Track.")
+        .. " window or type /tf to add your first name, or right-click a portrait and pick Find Target.")
 end
 
 -- /tf intro: the welcome line now, and the macro book tip again, at once if the book shows FIND, else the next time it opens there.
