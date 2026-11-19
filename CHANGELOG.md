@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/miyankooo/TargetFinder/compare/v1.4.1...v1.5.0) (2026-11-19)
+
+
+### Features
+
+* FIND hands over past dead targets, and Track is now Find Target ([6b91711](https://github.com/miyankooo/TargetFinder/commit/6b917118d89526f13c586e3461fa498ed88b8fd6))
+
 ## [1.4.1](https://github.com/miyankooo/TargetFinder/compare/v1.4.0...v1.4.1) (2026-11-16)
 
 
